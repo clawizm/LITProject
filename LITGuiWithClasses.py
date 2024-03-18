@@ -18,13 +18,13 @@ class LITSubsystemData():
                  number_of_sections: int = 8, host: str = None, port: int = None) -> None:
         """
         Parameters:
-        camera_idx (int): The USB ID number for the camera of this Subsystem. This is how the device is identified by the OS.
-        object_detection_model (typing.Union[ObjectDetectionModel, None]): The detection model used to perform inference on the camera_idx.
-        number_of_leds (int): The number of LEDs of the LED Subsystem.
-        number_of_sections (int): When specifying how the lights would like to be sectionalzied when attempting to illuminate an object, this value is used to divide the LED Subsystem
+        - camera_idx (int): The USB ID number for the camera of this Subsystem. This is how the device is identified by the OS.
+        - object_detection_model (typing.Union[ObjectDetectionModel, None]): The detection model used to perform inference on the camera_idx.
+        - number_of_leds (int): The number of LEDs of the LED Subsystem.
+        - number_of_sections (int): When specifying how the lights would like to be sectionalzied when attempting to illuminate an object, this value is used to divide the LED Subsystem
                                     into an equal number of sections equal to number_of_sections. The larger this number the smalled the column illuminated when an object is detected.
-        host (str): The Server IP Address where information will be sent, involving LEDs to Illumuniate.     
-        port (int): The specific port you would like to create your connectiom to the server with. 
+        - host (str): The Server IP Address where information will be sent, involving LEDs to Illumuniate.     
+        - port (int): The specific port you would like to create your connectiom to the server with. 
         """
         self.camera_idx = camera_idx
         self.object_detection_model = object_detection_model
@@ -61,17 +61,17 @@ class LITGUI(LITGuiEventHandler):
     
     Attributes:
     
-    led_tuples_dict_of_list (dict[list[tuple[int, int]]]): A dictionary where the key is the camera_idx of the current Subsystem being referenced, such as 'CAMERA_0'. The values stores
+    - led_tuples_dict_of_list (dict[list[tuple[int, int]]]): A dictionary where the key is the camera_idx of the current Subsystem being referenced, such as 'CAMERA_0'. The values stores
     are a list of tuples containing two integers, where the integers are the start and stop values of ranges of the LEDSubsystem. These ranges are unqiue to each checkbox in the 'Manually Control LED Ranges Section'.
 
-    object_detection_model_dict (dict[str, typing.Union[ObjectDetectionModel, None]]): A dictonary where each key is a camera plus its index, such as 'CAMERA_0'.
+    - object_detection_model_dict (dict[str, typing.Union[ObjectDetectionModel, None]]): A dictonary where each key is a camera plus its index, such as 'CAMERA_0'.
     Each Camera in the GUI has the option of being part of a subsystem, bus is not required. 
     This dict will store each Camera passed to the GUI, and store whether that camera is used for performing Object Detection or is just used to view video from a webcam.
 
-    lit_subsystem_conn_dict (dict[str, typing.Union[socket.socket, bool]]): A dictonary where each key is a camera plus its index, such as 'CAMERA_0'. If the camera is part of a subsystem which 
+    - lit_subsystem_conn_dict (dict[str, typing.Union[socket.socket, bool]]): A dictonary where each key is a camera plus its index, such as 'CAMERA_0'. If the camera is part of a subsystem which 
     is sending data over a socket connection for address LED in the Subsystem, then the value stored will be an instance of a socket connection, but if there is no connection the value will be False.
 
-    lit_subystem_thread_lock_dict (dict[str, typing.Union[threading.Lock, bool]]): A dictonary where each key is a camera plus its index, such as 'CAMERA_0'. If there is a server connection for this
+    - lit_subystem_thread_lock_dict (dict[str, typing.Union[threading.Lock, bool]]): A dictonary where each key is a camera plus its index, such as 'CAMERA_0'. If there is a server connection for this
     camera subsystem, we use an instance of the threading.Lock class for sending data, so that each unqiue connection for cameras in the GUI have the ability to send data autonomously through their respective
     object detection models, and manually through user input in the GUI. This prevents any race conditions from occuring when sending data.
     """
@@ -85,7 +85,7 @@ class LITGUI(LITGuiEventHandler):
         """Creates a GUI displaying Camera Feeds for each LITSubsystemData instance passed.
         
         Parameters:
-        lit_subsystem_data (typing.Union[LITSubsystemData, list[LITSubsystemData]]): Will create a seperate section in the GUI for each subsystem passed, whether in a list of Length N, or 
+        - lit_subsystem_data (typing.Union[LITSubsystemData, list[LITSubsystemData]]): Will create a seperate section in the GUI for each subsystem passed, whether in a list of Length N, or 
         if a single instance of LITSubsystemData is passed."""
 
         if isinstance(lit_subsystem_data, LITSubsystemData):
@@ -102,7 +102,7 @@ class LITGUI(LITGuiEventHandler):
     def set_lit_subsystems_windows(self, lit_subsystem_data: typing.Union[LITSubsystemData, list[LITSubsystemData], None, list[None]]):
         """Sets the window where each object detection model will pass data to, which will be the window created by an instance of this class.
         
-        lit_subsystem_data (typing.Union[LITSubsystemData, list[LITSubsystemData], None, list[None]]): An instance of the LITSubsystemData class, or a list containing either all LITSubsystemData 
+        - lit_subsystem_data (typing.Union[LITSubsystemData, list[LITSubsystemData], None, list[None]]): An instance of the LITSubsystemData class, or a list containing either all LITSubsystemData 
         instances, or some LITSubsystemData instances and some Nonetype instances."""
 
         if isinstance(lit_subsystem_data, LITSubsystemData):
@@ -131,7 +131,7 @@ class LITGUI(LITGuiEventHandler):
         object detection model dictionary
         
         Parameters:
-        object_detection_model (typing.Union[ObjectDetectionModel, None]): an instance of the ObjectDetectionModel, or a NoneType instance.
+        - object_detection_model (typing.Union[ObjectDetectionModel, None]): an instance of the ObjectDetectionModel, or a NoneType instance.
         """
         if isinstance(object_detection_model, ObjectDetectionModel):
             object_detection_model.set_image_window(f'-CAMERA_{self.camera_idx}_FEED-')
@@ -142,7 +142,7 @@ class LITGUI(LITGuiEventHandler):
         """Creates a frame for a LITSubsystemData instance passed. This Frame contains all of the User Interface relevant to the provided LITSubsystem.
         
         Parameters:
-        lit_subsystem_data (LITSubsystemData): An instance of the LITSubsystemData class."""
+        - lit_subsystem_data (LITSubsystemData): An instance of the LITSubsystemData class."""
 
         self.camera_idx = lit_subsystem_data.camera_idx
         self.number_of_leds = lit_subsystem_data.number_of_leds

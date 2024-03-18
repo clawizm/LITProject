@@ -4,18 +4,37 @@ import neopixel
 import pickle
 import typing
 
+
 class LEDPanels:
+    """Used to interface with an LED system. Allows for cascading of NeoPixel Panels of the same size, where sections of the LEDs can be directly altered with APIs.
+    
+    Attributes:
+    
+    - auto_mode_status (bool): Enables/Disables the ability to update the LEDs without user interference using the ObjectDetectionModel Module.
+    - manual_mode_status (bool): Enables/Disables the ability to update the LEDs with user interference such as calling led update methods, or using the GUI in LUIGui Module.
+    - manual_brightness (float): Sets the class brightness for any LED that is being manually controlled.
+    - manual_led_ranges (list[tuple]): The current list of LED ranges the user is manually turning on in the LITGui Module.
+    - manual_led_with_sliders (tuple): The current range of LEDs the user is manually turning on with the LED slider in the LITGui Module."""
+
+    auto_mode_status: bool
     manual_mode_status: bool
     manual_brightness: float
     manual_led_ranges: list[tuple]
     manual_led_with_sliders: tuple 
-    
-    def __init__(self, board_pin, num_of_leds: int = 800, brightness: float = 1):
+
+    def __init__(self, board_pin: board, num_of_leds: int = 800, brightness: float = 1):
+        """Using a board pin, this initializes the current class and an instance of the NeoPixel class."""
         self.board_pixels = neopixel.NeoPixel(board_pin, num_of_leds, brightness=brightness)
         return
 
 
-    def turn_off_led_ranges(self ,turn_off_tuple_list: list[tuple]):
+    def auto_turn_off_led_ranges(self, turn_off_tuple_list: list[tuple]):
+        """Turn off all ranges in the provided turn_off_tuple_list, this will ignore leds that are currently set to be turned on manually if the manual mode is enabled.
+        This will update the LEDs in the same column amongst all of the panels.
+        
+        Parameters:
+        - turn_off_tuple_list (list[tuple]): A list of tuples containing the start and stop values of the range of LEDs to turn off."""
+
         for turn_off_range in turn_off_tuple_list:
             if self.manual_mode_status:
                 if self.range_is_in_manual_mode_section(turn_off_range):
@@ -37,7 +56,12 @@ class LEDPanels:
         return
 
 
-    def update_leds(self, objs_detect_stats_list_of_dicts: list[dict]):
+    def auto_update_leds(self, objs_detect_stats_list_of_dicts: list[dict]):
+        """Used as part of the Object Detection Model Subsystem, where this method will update the status of any LED that is not apart of the manually selected LEDs if manual status is enabled, using the data from the Object Detection Model.
+        
+        Parameters:
+        - objs_detect_stats_list_of_dicts (list[dict]): The list of dictonaries containing start and stop ranges of LEDs to turn on at a specified brightness in the respective dictionary."""
+
         for led_dict in objs_detect_stats_list_of_dicts:
             if not led_dict:
                 continue
@@ -48,6 +72,11 @@ class LEDPanels:
         return
 
     def turn_on_manual_range(self, manual_led_tuple: tuple[int, int]):
+        """Used to manually specify LED Ranges to turn on, called from GUI events, or can be called as a standalone method.
+        
+        Parameters:
+        - manual_led_tuple (tuple[int, int]): A range of LEDs to turn on at the brightness stored in the manual brightness attribute."""
+        
         if not manual_led_tuple:
             return
         leds_tuple_mid_panel = (512-manual_led_tuple[1], 512-manual_led_tuple[0])
@@ -61,6 +90,13 @@ class LEDPanels:
         return
     
     def update_current_auto_detect_led_tuple_ranges(self, led_dict: dict[float, tuple[int, int]]):
+        """Updates the current LED range provided in the dict with the brightness provided. This will update all leds in the specified column (range).
+        
+        Parameters:
+        
+        - led_dict (dict[float, tuple[int, int]]): A dictonary containing two sets of key-value pairs, where the brightness to set the current LED range to is stored in the key 'brightness' as a float (0.00-1.00), 
+        and the led tuple used to speicfy the range is stored in 'led_tuple'."""
+
         brightness = float(led_dict['brightness'])
         leds_tuple = led_dict['led_tuple']
         leds_tuple_mid_panel = (512-leds_tuple[1], 512-leds_tuple[0])
@@ -74,6 +110,8 @@ class LEDPanels:
         return
     
     def manual_brightness_adjust_of_manual_ranges(self):
+        """Used when the brightness is manually adjusted, this method iterates over all ranges over currently manually controlled LEDs and updates their brightnesses."""
+
         if self.manual_led_ranges:
             for led_tuple in self.manual_led_ranges:
                 self.turn_on_manual_range(led_tuple)
@@ -82,23 +120,36 @@ class LEDPanels:
             self.turn_on_manual_range(self.manual_led_with_sliders)
         return
 
-    def update_leds_from_data_packets(self, data: list[any]):
+
+    def update_leds_from_data_packets(self, data: list):
+        """Used to update LEDs from a server connection, first the data is assumed to be pickled and therefore must be unpickled. This handles packets received from the ObjectDetectionModel or the LITGui Modules.
+        
+        Parameters:
+        - data: UPDATE"""
+
         try:
             detect_obj = pickle.loads(data)
         except:
-            pass
+            detect_obj = data
         try:
-            if detect_obj[0] == 'auto':
+            if detect_obj[0] == 'AUTO_LED_DATA':
                 if detect_obj[1]:
-                    self.update_leds(detect_obj[0])
+                    self.auto_update_leds(detect_obj[1])
                 if detect_obj[2]:
-                    self.turn_off_led_ranges(detect_obj[1])
-            else:
+                    self.auto_turn_off_led_ranges(detect_obj[2])
+            elif detect_obj[0] == 'UPDATE_AUTO_STATUS':
+                self.update_auto_mode_status(detect_obj[1])
+            elif detect_obj[0] == 'MANUAL':
                 self.handle_manual_mode_event(detect_obj)
         except:
             pass
 
     def range_is_in_manual_mode_section(self, turn_off_range: tuple[int, int])->bool:
+        """Check if a range to be updated automatically is currently being controlled by one of the manually settings.
+        
+        Parameters:
+        - turn_off_range (tuple[int, int]): The range of leds to change the status of represented as a tuple of the start and stop points."""
+
         if self.manual_led_ranges and self.manual_led_with_sliders:
             if any(is_overlap(turn_off_range, led_range) for led_range in self.manual_led_ranges) or is_overlap(turn_off_range, self.manual_led_with_sliders):
                 return True
@@ -114,8 +165,14 @@ class LEDPanels:
         return False
     
     def handle_manual_mode_event(self, detect_obj: list[str, str, typing.Union[tuple, float]]):
+        """Handles an event in which the user would like to manually update the LEDs from either the LITGui Module, or using this method directly.
+        
+        Parameters:
+        - detect_obj: (list[str, str, typing.Union[tuple, float]]): The information related to the manual update operation. Example input:  ['MANUAL', 'LED_RANGE_APPEND', (0,31)]"""
+
         if detect_obj[1] == 'MANUAL_STAUS':
             self.manual_mode_status = detect_obj[2]
+            self.handle_update_of_manual_mode_or_auto_mode_status()
         elif detect_obj[1] == 'LED_RANGE_APPEND':
             self.manual_led_ranges.append(detect_obj[2])
             self.turn_on_manual_range(detect_obj[2])
@@ -127,11 +184,20 @@ class LEDPanels:
             self.manual_brightness = detect_obj[2]
             self.manual_brightness_adjust_of_manual_ranges()
         elif detect_obj[1] == 'LED_SLIDER_RANGE':
-            #verify data is in a proper tuple
             self.manual_led_with_sliders = detect_obj[2]
             if self.manual_led_with_sliders:
                 self.turn_on_manual_range(detect_obj[2])
-        
+    
+    def update_auto_mode_status(self, auto_mode_status: bool):
+        """Update the state of the auto mode status attribute."""
+        self.auto_mode_status = auto_mode_status
+        return
+
+    def handle_update_of_manual_mode_or_auto_mode_status(self):
+        """If the LED panel has nothing provided control of the lights anymore, turn them all off."""
+        if not self.manual_mode_status and not self.auto_mode_status:
+            self.auto_turn_off_led_ranges([0, 255])
+        return
     
 def is_overlap(range1, range2):
     """Check if range1 overlaps with range2."""
