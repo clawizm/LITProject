@@ -121,7 +121,7 @@ class LITGUI(LITGuiEventHandler):
         leds_ranges = round(self.number_of_leds/self.num_of_sections)
         i = 0
         while i < self.number_of_leds:
-            led_tuples_list.append((i, i+leds_ranges-1))
+            led_tuples_list.append((i, i+leds_ranges))
             i += leds_ranges
         return led_tuples_list
     
@@ -227,9 +227,9 @@ class LITGUI(LITGuiEventHandler):
     
 
 if __name__ == '__main__':
-    obj_detector = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
-                                        r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
-    subsystem_one = LITSubsystemData(0, obj_detector)
+    # obj_detector = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
+    #                                     r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
+    subsystem_one = LITSubsystemData(0)
     subsystem_two = LITSubsystemData(1)
     subsystem_list = [subsystem_one, subsystem_two]
     lit_gui = LITGUI(subsystem_list)

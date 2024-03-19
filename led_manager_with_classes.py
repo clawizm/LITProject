@@ -34,7 +34,9 @@ class LEDPanels:
         
         Parameters:
         - turn_off_tuple_list (list[tuple]): A list of tuples containing the start and stop values of the range of LEDs to turn off."""
-
+        if isinstance(turn_off_tuple_list, tuple):
+            turn_off_tuple_list = [turn_off_tuple_list]
+            
         for turn_off_range in turn_off_tuple_list:
             if self.manual_mode_status:
                 if self.range_is_in_manual_mode_section(turn_off_range):
@@ -179,7 +181,8 @@ class LEDPanels:
         elif detect_obj[1] == 'LED_RANGE_REMOVE':
             self.manual_led_ranges.remove(detect_obj[2])
             #this may need a turn off manual range function that turns off the LEDS immedadlity 
-            # self.turn_off_manual_range(detect_obj[2])
+            if not self.auto_mode_status:
+                self.auto_turn_off_led_ranges([detect_obj[2]])
         elif detect_obj[1] == 'BRIGHTNESS':
             self.manual_brightness = detect_obj[2]
             self.manual_brightness_adjust_of_manual_ranges()
@@ -187,6 +190,8 @@ class LEDPanels:
             self.manual_led_with_sliders = detect_obj[2]
             if self.manual_led_with_sliders:
                 self.turn_on_manual_range(detect_obj[2])
+            if not self.auto_mode_status:
+                self.auto_turn_off_led_ranges([detect_obj[3]])
     
     def update_auto_mode_status(self, auto_mode_status: bool):
         """Update the state of the auto mode status attribute."""
