@@ -16,15 +16,16 @@ class LEDPanels:
     - manual_led_ranges (list[tuple]): The current list of LED ranges the user is manually turning on in the LITGui Module.
     - manual_led_with_sliders (tuple): The current range of LEDs the user is manually turning on with the LED slider in the LITGui Module."""
 
-    auto_mode_status: bool
-    manual_mode_status: bool
-    manual_brightness: float
-    manual_led_ranges: list[tuple]
-    manual_led_with_sliders: tuple 
+    auto_mode_status: bool = False
+    manual_mode_status: bool = False
+    manual_brightness: float = 0.0
+    manual_led_ranges: list[tuple] = []
+    manual_led_with_sliders: tuple = None
 
     def __init__(self, board_pin: board, num_of_leds: int = 800, brightness: float = 1):
         """Using a board pin, this initializes the current class and an instance of the NeoPixel class."""
         self.board_pixels = neopixel.NeoPixel(board_pin, num_of_leds, brightness=brightness)
+        self.board_pixels.fill((0,0,0))
         return
 
 
@@ -96,12 +97,10 @@ class LEDPanels:
         
         - led_dict (dict[float, tuple[int, int]]): A dictonary containing two sets of key-value pairs, where the brightness to set the current LED range to is stored in the key 'brightness' as a float (0.00-1.00), 
         and the led tuple used to speicfy the range is stored in 'led_tuple'."""
-
         brightness = float(led_dict['brightness'])
         leds_tuple = led_dict['led_tuple']
         leds_tuple_mid_panel = (512-leds_tuple[1], 512-leds_tuple[0])
         leds_tuple_top_panel = (leds_tuple[0]+512, leds_tuple[1]+512)
-        
         self.board_pixels[leds_tuple[0]:leds_tuple[1]] = [(0,0,round(255*brightness))] * (leds_tuple[1]-leds_tuple[0])
 
         self.board_pixels[leds_tuple_mid_panel[0]:leds_tuple_mid_panel[1]] = [(0,0,round(255*brightness))] * (leds_tuple_mid_panel[1]-leds_tuple_mid_panel[0])
@@ -114,6 +113,7 @@ class LEDPanels:
 
         if self.manual_led_ranges:
             for led_tuple in self.manual_led_ranges:
+                print(led_tuple)
                 self.turn_on_manual_range(led_tuple)
 
         elif self.manual_led_with_sliders:
@@ -139,7 +139,7 @@ class LEDPanels:
                     self.auto_turn_off_led_ranges(detect_obj[2])
             elif detect_obj[0] == 'UPDATE_AUTO_STATUS':
                 self.update_auto_mode_status(detect_obj[1])
-            elif detect_obj[0] == 'MANUAL':
+            else:
                 self.handle_manual_mode_event(detect_obj)
         except:
             pass
@@ -169,7 +169,6 @@ class LEDPanels:
         
         Parameters:
         - detect_obj: (list[str, str, typing.Union[tuple, float]]): The information related to the manual update operation. Example input:  ['MANUAL', 'LED_RANGE_APPEND', (0,31)]"""
-
         if detect_obj[1] == 'MANUAL_STAUS':
             self.manual_mode_status = detect_obj[2]
             self.handle_update_of_manual_mode_or_auto_mode_status()
@@ -178,8 +177,8 @@ class LEDPanels:
             self.turn_on_manual_range(detect_obj[2])
         elif detect_obj[1] == 'LED_RANGE_REMOVE':
             self.manual_led_ranges.remove(detect_obj[2])
-            #this may need a turn off manual range function that turns off the LEDS immedadlity 
-            # self.turn_off_manual_range(detect_obj[2])
+            if not self.auto_mode_status:
+                self.auto_turn_off_led_ranges([detect_obj[2]])
         elif detect_obj[1] == 'BRIGHTNESS':
             self.manual_brightness = detect_obj[2]
             self.manual_brightness_adjust_of_manual_ranges()
@@ -187,7 +186,10 @@ class LEDPanels:
             self.manual_led_with_sliders = detect_obj[2]
             if self.manual_led_with_sliders:
                 self.turn_on_manual_range(detect_obj[2])
-    
+            if not self.auto_mode_status:
+                mssing_nums = find_missing_numbers_as_ranges_tuples([detect_obj[2]])
+                self.auto_turn_off_led_ranges(mssing_nums)
+
     def update_auto_mode_status(self, auto_mode_status: bool):
         """Update the state of the auto mode status attribute."""
         self.auto_mode_status = auto_mode_status
@@ -202,3 +204,36 @@ class LEDPanels:
 def is_overlap(range1, range2):
     """Check if range1 overlaps with range2."""
     return range1[0] <= range2[1] and range1[1] >= range2[0]
+
+def find_missing_numbers_as_ranges_tuples(ranges) -> list[tuple]:
+    # Initialize a set with all numbers from 0 to 256
+    all_numbers = set(range(257))
+    
+    # Remove the numbers present in the given ranges
+    for start, end in ranges:
+        all_numbers -= set(range(start, end + 1))
+    
+    # Convert the set to a sorted list
+    missing_numbers_sorted = sorted(list(all_numbers))
+    
+    # Group the consecutive numbers into ranges
+    missing_ranges = []
+    if missing_numbers_sorted:
+        # Initialize the first range with the first missing number
+        range_start = missing_numbers_sorted[0]
+        range_end = missing_numbers_sorted[0]
+        
+        for number in missing_numbers_sorted[1:]:
+            if number == range_end + 1:
+                # Extend the current range
+                range_end = number
+            else:
+                # Finish the current range and start a new one
+                missing_ranges.append((range_start, range_end))
+                range_start = number
+                range_end = number
+        
+        # Add the last range
+        missing_ranges.append((range_start, range_end))
+    
+    return missing_ranges

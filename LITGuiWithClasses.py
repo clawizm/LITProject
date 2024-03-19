@@ -43,15 +43,16 @@ class LITSubsystemData():
             try:
                 self.send_lock = threading.Lock()
                 self.client_conn = socket.socket()
-                self.client_conn.connect(self.host,self.port)
+                self.client_conn.connect((self.host, self.port))
                 if self.object_detection_model:
                     self.object_detection_model.set_client_conn(self.client_conn)
                     self.object_detection_model.set_thread_lock(self.send_lock)
                 return
             except:
                 pass
-        self.client_conn = False
-        self.send_lock = False
+        else:
+            self.client_conn = False
+            self.send_lock = False
         return
 
 class LITGUI(LITGuiEventHandler):
@@ -227,11 +228,12 @@ class LITGUI(LITGuiEventHandler):
     
 
 if __name__ == '__main__':
-    obj_detector = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
+    obj_detector_one = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
                                         r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
-    subsystem_one = LITSubsystemData(0, obj_detector)
-    subsystem_two = LITSubsystemData(1)
-    subsystem_list = [subsystem_one, subsystem_two]
+    # obj_detector_two = ObjectDetectionModel(r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/detect.tflite', False, 2, 
+    #                                     r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/labelmap.txt')
+    subsystem_one = LITSubsystemData(0, obj_detector_one, host='192.168.0.220', port=5000)
+    subsystem_list = subsystem_one
     lit_gui = LITGUI(subsystem_list)
     lit_gui.start_event_loop()
 

@@ -47,7 +47,7 @@ class LITGuiEventHandler:
     def on_autonomous_mode_event(self):
         """Handles an event in which the user has pressed the _AUTONOMOUSMODE checkbox in one of the Subsystems displayed on the GUI. This will either stop or start detection in the current subsystem based on the 
         value of the checkbox. It will also alter the status of the show feed checkbox."""
-        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
+        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}'] and self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
             self.send_auto_status_data_with_lock(self.values[f'-CAMERA_{self.event_camera}_AUTONOMOUSMODE-'], self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}'], self.lit_subystem_thread_lock_dict[f'CAMERA_{self.event_camera}'])
 
         if self.values[f'-CAMERA_{self.event_camera}_AUTONOMOUSMODE-']:            
@@ -120,7 +120,7 @@ class LITGuiEventHandler:
         """Handles an event in which the user has altered the value of a led brightness slider in one of the LED brightness sliders displayed on the GUI inside of the Subsystem Frames. 
         If there is a connection to a server, this event will update the state of the LED slider brightness specified by the user in the physical LED Subsystem."""
         if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
-            brightness = self.values[f'-CAMERA_{self.event_camera}_BRIGHTNESSSLIDER-']
+            brightness = self.values[f'-CAMERA_{self.event_camera}_BRIGHTNESSSLIDER-'] / 100
             client_conn = self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']
             thread_lock = self.lit_subystem_thread_lock_dict[f'CAMERA_{self.event_camera}']
             self.send_manual_led_brighntess_data_with_lock(brightness, client_conn, thread_lock)

@@ -35,6 +35,7 @@ class LITSubsystemServer:
 def run_lit_subsystem_servers_in_parallel(lit_servers: typing.Union[list[LITSubsystemServer], LITSubsystemServer]):
     if isinstance(lit_servers, LITSubsystemServer):
         lit_servers.main_server_loop()
+        
     elif isinstance(lit_servers, list):
         server_processes = [Process(target=lit_server.main_server_loop) for lit_server in (lit_servers)]
         for process in server_processes:
