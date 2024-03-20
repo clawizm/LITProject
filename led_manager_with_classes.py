@@ -19,7 +19,7 @@ class LEDPanels:
     auto_mode_status: bool = False
     manual_mode_status: bool = False
     manual_brightness: float = 0
-    manual_led_ranges: list[tuple] = [(0, 0)]
+    manual_led_ranges: list[tuple] = []
     manual_led_with_sliders: tuple = (0, 0)
 
     def __init__(self, board_pin: board, num_of_leds: int = 800, brightness: float = 1):
@@ -197,6 +197,7 @@ class LEDPanels:
                 self.auto_turn_off_led_ranges(turn_off_ranges, True)
                 if self.manual_led_with_sliders:
                     self.manual_led_ranges.remove(self.manual_led_with_sliders)
+                    
     def update_auto_mode_status(self, auto_mode_status: bool):
         """Update the state of the auto mode status attribute."""
         self.auto_mode_status = auto_mode_status

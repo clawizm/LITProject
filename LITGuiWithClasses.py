@@ -6,53 +6,13 @@ import ObjectDetectionModel
 from ObjectDetectionModel import ObjectDetectionModel
 import threading
 import socket
+import pickle
+from LITSubsystemInterface import LITSubsystemData
 # used to prevent popup froms occur while debugging and poential errors that are inevitable but caught with try and excepts from also creating annoying popups
 sg.set_options(suppress_raise_key_errors=True, suppress_error_popups=True, suppress_key_guessing=True)
 
 
-class LITSubsystemData():
-    """A data structure used to store information relevant between the GUI, ObjectDetectionModel used for performing Object Detection on the camera specified, and the potential server the user 
-    would like data sent to for addressing the LED subsystems."""
 
-    def __init__(self, camera_idx: int, object_detection_model: typing.Union[ObjectDetectionModel, None] = None, number_of_leds: int = 256,
-                 number_of_sections: int = 8, host: str = None, port: int = None) -> None:
-        """
-        Parameters:
-        - camera_idx (int): The USB ID number for the camera of this Subsystem. This is how the device is identified by the OS.
-        - object_detection_model (typing.Union[ObjectDetectionModel, None]): The detection model used to perform inference on the camera_idx.
-        - number_of_leds (int): The number of LEDs of the LED Subsystem.
-        - number_of_sections (int): When specifying how the lights would like to be sectionalzied when attempting to illuminate an object, this value is used to divide the LED Subsystem
-                                    into an equal number of sections equal to number_of_sections. The larger this number the smalled the column illuminated when an object is detected.
-        - host (str): The Server IP Address where information will be sent, involving LEDs to Illumuniate.     
-        - port (int): The specific port you would like to create your connectiom to the server with. 
-        """
-        self.camera_idx = camera_idx
-        self.object_detection_model = object_detection_model
-        self.number_of_leds = number_of_leds
-        self.number_of_sections = number_of_sections
-        self.host = host
-        self.port = port
-        self.attempt_to_create_client_conn()
-
-    def attempt_to_create_client_conn(self):
-        """Called in the constructor, used to create a connection to the server if provided a host and port. This connection is unique to each instance, as well as the lock creatred when connecting.
-        This connection and thread lock is also passed to the object detection model if provide in the constructor. If the server and port are not present, the client_conn and send_lock
-        attributes are set to False."""
-
-        if self.host and self.port:
-            try:
-                self.send_lock = threading.Lock()
-                self.client_conn = socket.socket()
-                self.client_conn.connect((self.host,self.port))
-                if self.object_detection_model:
-                    self.object_detection_model.set_client_conn(self.client_conn)
-                    self.object_detection_model.set_thread_lock(self.send_lock)
-                return
-            except:
-                pass
-        self.client_conn = False
-        self.send_lock = False
-        return
 
 class LITGUI(LITGuiEventHandler):
     """Abstract GUI Class used to create a GUI that displays live camera feed for N number of cameras, with each camera camera in the GUI having its own section to turn off and on
@@ -80,7 +40,8 @@ class LITGUI(LITGuiEventHandler):
     object_detection_model_dict: dict[str, typing.Union[ObjectDetectionModel, None]] = {}
     lit_subystem_conn_dict: dict[str, typing.Union[socket.socket, bool]] = {}
     lit_subystem_thread_lock_dict: dict[str, typing.Union[threading.Lock, bool]] = {}
-
+    lit_subsystem_dict: dict[str, LITSubsystemData] = {}
+    
     def __init__(self, lit_subsystem_data: typing.Union[LITSubsystemData, list[LITSubsystemData]]):
         """Creates a GUI displaying Camera Feeds for each LITSubsystemData instance passed.
         
@@ -125,7 +86,6 @@ class LITGUI(LITGuiEventHandler):
             i += leds_ranges
         return led_tuples_list
     
-
     def add_object_detection_model_to_gui(self, object_detection_model: typing.Union[ObjectDetectionModel, None]):
         """Sets the image window where video feed will be passed from the object detection model to the GUI window. Also adds the key value pair of the camera_idx and the object model instance to the 
         object detection model dictionary
@@ -147,8 +107,9 @@ class LITGUI(LITGuiEventHandler):
         self.camera_idx = lit_subsystem_data.camera_idx
         self.number_of_leds = lit_subsystem_data.number_of_leds
         self.num_of_sections = lit_subsystem_data.number_of_sections
-        self.lit_subystem_conn_dict[f'CAMERA_{self.camera_idx}'] = lit_subsystem_data.client_conn
-        self.lit_subystem_thread_lock_dict[f'CAMERA_{self.camera_idx}'] = lit_subsystem_data.send_lock
+        self.lit_subsystem_dict[f'CAMERA_{self.camera_idx}'] = lit_subsystem_data
+        # self.lit_subystem_conn_dict[f'CAMERA_{self.camera_idx}'] = lit_subsystem_data.client_conn
+        # self.lit_subystem_thread_lock_dict[f'CAMERA_{self.camera_idx}'] = lit_subsystem_data.send_lock
         self.add_object_detection_model_to_gui(lit_subsystem_data.object_detection_model)
         led_tuples_list = self.create_led_tuple_range_list()
         self.led_tuples_dict_of_list[f"CAMERA_{self.camera_idx}"] =led_tuples_list
@@ -227,12 +188,14 @@ class LITGUI(LITGuiEventHandler):
     
 
 if __name__ == '__main__':
-    obj_detector_one = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
-                                        r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
+    # obj_detector_one = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
+    #                                     r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
     # obj_detector_two = ObjectDetectionModel(r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/detect.tflite', False, 2, 
     #                                     r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/labelmap.txt')
-    subsystem_one = LITSubsystemData(0, obj_detector_one, host='192.168.0.220', port=5000)
-    subsystem_two = LITSubsystemData(1, obj_detector_one, host='192.168.0.220', port=5001)
+    host='192.168.0.220'
+    ports = [5000, 5001]
+    subsystem_one = LITSubsystemData(0)
+    subsystem_two = LITSubsystemData(1)
 
     subsystem_list = [subsystem_one, subsystem_two]
     lit_gui = LITGUI(subsystem_list)

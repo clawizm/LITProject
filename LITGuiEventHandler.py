@@ -8,8 +8,8 @@ import threading
 import time
 import socket
 import pickle
-
-
+from LITSubsystemInterface import LITSubsystemData
+from utils import AutoLEDData, ManualLEDData
 class LITGuiEventHandler:
     """A class handing events with the LITGUI class. The seperation of two allows for this class to be overwritten or manually implemented by other developers to handle their own events in the
     GUI.
@@ -35,8 +35,8 @@ class LITGuiEventHandler:
     window: sg.Window
     led_tuples_dict_of_list: dict[list[tuple[int, int]]]
     object_detection_model_dict: dict[str, ObjectDetectionModel]
-    lit_subystem_conn_dict: dict[str, socket.socket] = {}
-    lit_subystem_thread_lock_dict: dict[str, threading.Lock] = {}
+    lit_subsystem_dict: dict[str, LITSubsystemData]
+    manual_led_data: ManualLEDData = ManualLEDData()
 
     def set_camera_of_event(self):
         """Used to find the camera index for the panel in which the event spawned from. This value is used to apply the setting changed to the correct Subsystem.
@@ -47,8 +47,8 @@ class LITGuiEventHandler:
     def on_autonomous_mode_event(self):
         """Handles an event in which the user has pressed the _AUTONOMOUSMODE checkbox in one of the Subsystems displayed on the GUI. This will either stop or start detection in the current subsystem based on the 
         value of the checkbox. It will also alter the status of the show feed checkbox."""
-        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
-            self.send_auto_status_data_with_lock(self.values[f'-CAMERA_{self.event_camera}_AUTONOMOUSMODE-'], self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}'], self.lit_subystem_thread_lock_dict[f'CAMERA_{self.event_camera}'])
+        if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn:
+            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].auto_status = self.values[f'-CAMERA_{self.event_camera}_AUTONOMOUSMODE-']
 
         if self.values[f'-CAMERA_{self.event_camera}_AUTONOMOUSMODE-']:            
             if self.object_detection_model_dict[f'CAMERA_{self.event_camera}']:
@@ -83,27 +83,27 @@ class LITGuiEventHandler:
         else:
             self.disable_all_manual_options_of_subsystem()
 
-        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
-            client_conn = self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']
-            thread_lock = self.lit_subystem_thread_lock_dict[f'CAMERA_{self.event_camera}']
-            self.send_manual_status_data_with_lock(manual_status, client_conn, thread_lock)
+        self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].manual_status = manual_status
         return
     
     def on_manually_control_led_range_event(self):  
         """Handles an event in which the user has altered the state of one of the LED range checkboxes displayed on the GUI inside one of the Subsystem Frames. If there is a connection to a server, this event will
         update the state of the LED range selected by the user in the physical LED Subsystem."""  
-        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
+        if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn:
             led_range = self.get_led_range_from_event()
-            status = self.get_value_of_element_from_event()        
-            client_conn = self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']
-            thread_lock = self.lit_subystem_thread_lock_dict[f'CAMERA_{self.event_camera}']
+            if self.get_value_of_element_from_event():
+                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].man.append(LEDData(led_range, self.values[f'-CAMERA_{self.event_camera}_BRIGHTNESSSLIDER-'])) 
+            else:
+                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].manual_led_data_list.append(LEDData(led_range, self.values[f'-CAMERA_{self.event_camera}_BRIGHTNESSSLIDER-'])) 
+            client_conn = self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn
+            thread_lock = self.lit_subsystem_dict[f'CAMREA_{self.event_camera}'].send_lock
             self.send_manual_led_range_data_with_lock(led_range, status, client_conn, thread_lock)
         return 
 
     def on_manually_control_led_range_slider_event(self):
         """Handles an event in which the user has altered the value of a led range slider in one of the LED range sliders displayed on the GUI inside of the Subsystem Frames. If there is a connection to a server,
         this event will update the state of the LED slider range specified by the user in the physical LED Subsystem."""
-        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
+        if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn:
             if self.values[f'-CAMERA_{self.event_camera}_SLIDER_LEFT_TO_RIGHT-']:
                 on_led_range = (0, round(self.values[f'-CAMERA_{self.event_camera}_LEDSLIDER-']))
                 off_led_range = (round(self.values[f'-CAMERA_{self.event_camera}_LEDSLIDER-']), 256)
@@ -116,17 +116,17 @@ class LITGuiEventHandler:
             if on_led_range == (0, 0):
                 on_led_range = False
                 off_led_range = (0, 256)
-            client_conn = self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']
-            thread_lock = self.lit_subystem_thread_lock_dict[f'CAMERA_{self.event_camera}']
+            client_conn = self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn
+            thread_lock = self.lit_subsystem_dict[f'CAMREA_{self.event_camera}'].send_lock
             self.send_manual_led_slider_data_with_lock(on_led_range, off_led_range, client_conn, thread_lock)
 
     def on_manually_control_led_brightness_slider_event(self):
         """Handles an event in which the user has altered the value of a led brightness slider in one of the LED brightness sliders displayed on the GUI inside of the Subsystem Frames. 
         If there is a connection to a server, this event will update the state of the LED slider brightness specified by the user in the physical LED Subsystem."""
-        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
+        if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn:
             brightness = round(self.values[f'-CAMERA_{self.event_camera}_BRIGHTNESSSLIDER-'] * .01, 2)
-            client_conn = self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']
-            thread_lock = self.lit_subystem_thread_lock_dict[f'CAMERA_{self.event_camera}']
+            client_conn = self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn
+            thread_lock = self.lit_subsystem_dict[f'CAMREA_{self.event_camera}'].send_lock
             self.send_manual_led_brighntess_data_with_lock(brightness, client_conn, thread_lock)
 
             

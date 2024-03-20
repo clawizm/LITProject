@@ -7,6 +7,7 @@ import time
 import pickle
 import socket
 import PySimpleGUI as sg    
+from utils import AutoLEDData
 from tensorflow.lite.python.interpreter import Interpreter 
 from tensorflow.lite.python.interpreter import load_delegate
 
@@ -19,61 +20,7 @@ except:
 import typing
 from multiprocessing import Process, Queue
 
-def find_missing_numbers_as_ranges_tuples(ranges) -> list[tuple]:
-    # Initialize a set with all numbers from 0 to 256
-    all_numbers = set(range(257))
-    
-    # Remove the numbers present in the given ranges
-    for start, end in ranges:
-        all_numbers -= set(range(start, end + 1))
-    
-    # Convert the set to a sorted list
-    missing_numbers_sorted = sorted(list(all_numbers))
-    
-    # Group the consecutive numbers into ranges
-    missing_ranges = []
-    if missing_numbers_sorted:
-        # Initialize the first range with the first missing number
-        range_start = missing_numbers_sorted[0]
-        range_end = missing_numbers_sorted[0]
-        
-        for number in missing_numbers_sorted[1:]:
-            if number == range_end + 1:
-                # Extend the current range
-                range_end = number
-            else:
-                # Finish the current range and start a new one
-                missing_ranges.append((range_start, range_end))
-                range_start = number
-                range_end = number
-        
-        # Add the last range
-        missing_ranges.append((range_start, range_end))
-    
-    return missing_ranges
 
-def send_data_for_led_addressing(curr_led_tuple_list: typing.Union[list[tuple], None], current_led_list_of_dicts: typing.Union[list[dict[str, float], dict[str, tuple[int, int]]], None], client_conn: socket.socket, thread_lock: socket.socket = None):
-    """Sends data to the respective LED subsystem associated with the instance of this ObjectDetectionModel using a socket connection. This is used to update the state of LEDs throughout the subsystem.
-    
-    Parameters:
-    - curr_led_tuple_list (typing.Union[list[tuple], None]): A list of all the LED ranges the user would like to turn on.
-    - current_led_list_of_dicts (typing.Union[list[dict[str, float], dict[str, tuple[int, int]]]): A list of dictonaries containing all LED ranges the user would like to turn on, and the brightness each range should be turn on at.
-    - client_conn (socket.socket): An instance of a socket connection where LED Data is passed to update the LEDs of the subsystem.
-    - thread_lock (socket.socket): An instance of a thread lock used to ensure thread safety if this program involved sending data to the same port with multiple threads."""
-
-    if not curr_led_tuple_list:
-        missing_ranges = [(0,255)]
-    else:
-        missing_ranges = find_missing_numbers_as_ranges_tuples(curr_led_tuple_list)
-
-    data = ['AUTO_LED_DATA', current_led_list_of_dicts, missing_ranges]
-    pickle_data = pickle.dumps(data)
-    if thread_lock:
-        with thread_lock:
-            client_conn.send(pickle_data)
-    else:
-        client_conn.send(pickle_data)        
-    return
 
 def brightness_based_on_distance(distance: int)->float:
     """Returns a brightness percetange based from 0.00 to 1.00:
@@ -221,7 +168,9 @@ class ObjectDetectionModel:
     input_mean: float = 127.5
     input_std: float = 127.5
     frame_rate_calc: int = 1
-    
+    current_led_list_of_dicts: list[dict] = []
+    curr_auto_led_data_list: list[tuple] = []
+
     def __init__(self, model_path: str, use_edge_tpu: bool, camera_index: int, label_path: str, 
                  min_conf_threshold: float= 0.5,window: typing.Union[sg.Window, None]=None, image_window_name: typing.Union[str, None]=None, 
                  client_conn: socket.socket = None, thread_lock: threading.Lock = None, ref_person_width: int = 20) -> None:
@@ -324,12 +273,10 @@ class ObjectDetectionModel:
 
         if self.video_stream.stopped:
             return
-        current_led_list_of_dicts = []
-        curr_led_tuple_list = []
+        curr_auto_led_data_list = []
         for i in range(len(scores)):
             if ((scores[i] > self.min_conf_threshold) and (scores[i] <= 1.0)):      
 
-                curr_led_dict = {}
                 self.get_and_set_current_box_vertices(boxes[i])
                 self.draw_rectangle_around_current_box()
                 self.set_label_on_obj_in_frame(classes[i], scores[i])
@@ -340,14 +287,11 @@ class ObjectDetectionModel:
                 angle_y = calculate_vert_angle(self.current_obj_mid_point_y, self.video_stream.video_heigth, self.video_stream.hfov)
                 brightness = brightness_based_on_distance(distance)
                 led_tuple = determine_leds_range_for_angle(angle_x)
-                curr_led_dict = {'brightness': brightness,
-                                 'led_tuple': led_tuple}
-                current_led_list_of_dicts.append(curr_led_dict)
-                curr_led_tuple_list.append(led_tuple)
+                curr_led_data = AutoLEDData(led_tuple, brightness)
+                curr_auto_led_data_list.append(curr_led_data)
 
         try:
-            if self.client_conn:
-                send_data_for_led_addressing(curr_led_tuple_list, current_led_list_of_dicts, self.client_conn, self.thread_lock)
+            self.curr_auto_led_data_list = curr_auto_led_data_list               
         except:
             pass
         # cv2.putText(self.frame,'FPS: {0:.2f}'.format(self.frame_rate_calc),(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,0),2,cv2.LINE_AA) #can prolly just delete will test.
