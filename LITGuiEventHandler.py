@@ -83,7 +83,7 @@ class LITGuiEventHandler:
         else:
             self.disable_all_manual_options_of_subsystem()
 
-        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}'] or True:
+        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
             client_conn = self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']
             thread_lock = self.lit_subystem_thread_lock_dict[f'CAMERA_{self.event_camera}']
             self.send_manual_status_data_with_lock(manual_status, client_conn, thread_lock)
@@ -92,7 +92,7 @@ class LITGuiEventHandler:
     def on_manually_control_led_range_event(self):  
         """Handles an event in which the user has altered the state of one of the LED range checkboxes displayed on the GUI inside one of the Subsystem Frames. If there is a connection to a server, this event will
         update the state of the LED range selected by the user in the physical LED Subsystem."""  
-        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}'] or True:
+        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
             led_range = self.get_led_range_from_event()
             status = self.get_value_of_element_from_event()        
             client_conn = self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']
@@ -103,7 +103,7 @@ class LITGuiEventHandler:
     def on_manually_control_led_range_slider_event(self):
         """Handles an event in which the user has altered the value of a led range slider in one of the LED range sliders displayed on the GUI inside of the Subsystem Frames. If there is a connection to a server,
         this event will update the state of the LED slider range specified by the user in the physical LED Subsystem."""
-        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}'] or True:
+        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
             if self.values[f'-CAMERA_{self.event_camera}_SLIDER_LEFT_TO_RIGHT-']:
                 on_led_range = (0, round(self.values[f'-CAMERA_{self.event_camera}_LEDSLIDER-']))
                 off_led_range = (round(self.values[f'-CAMERA_{self.event_camera}_LEDSLIDER-']), 256)
@@ -123,7 +123,7 @@ class LITGuiEventHandler:
     def on_manually_control_led_brightness_slider_event(self):
         """Handles an event in which the user has altered the value of a led brightness slider in one of the LED brightness sliders displayed on the GUI inside of the Subsystem Frames. 
         If there is a connection to a server, this event will update the state of the LED slider brightness specified by the user in the physical LED Subsystem."""
-        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}'] or True:
+        if self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']:
             brightness = round(self.values[f'-CAMERA_{self.event_camera}_BRIGHTNESSSLIDER-'] * .01, 2)
             client_conn = self.lit_subystem_conn_dict[f'CAMERA_{self.event_camera}']
             thread_lock = self.lit_subystem_thread_lock_dict[f'CAMERA_{self.event_camera}']
@@ -236,7 +236,6 @@ class LITGuiEventHandler:
                 data = ['MANUAL', 'LED_RANGE_APPEND', led_range]
             else:
                 data = ['MANUAL', 'LED_RANGE_REMOVE', led_range]
-            print(data)
             
             pickle_data = pickle.dumps(data)
             if send_lock:
@@ -258,7 +257,6 @@ class LITGuiEventHandler:
         - send_lock (threading.Lock): A thread lock that should be shared by all threads that are used to send data over the instance of the client_conn passed to this method."""
         try:
             data = ['MANUAL', 'LED_SLIDER_RANGE', on_led_range, off_led_range]
-            print(data)
             pickle_data = pickle.dumps(data)
             if send_lock:
                 with send_lock:
@@ -279,7 +277,6 @@ class LITGuiEventHandler:
         - send_lock (threading.Lock): A thread lock that should be shared by all threads that are used to send data over the instance of the client_conn passed to this method."""
         try:
             data = ['MANUAL', 'BRIGHTNESS', brightness]
-            print(data)
             pickle_data = pickle.dumps(data)
             if send_lock:
                 with send_lock:
@@ -300,7 +297,6 @@ class LITGuiEventHandler:
         - send_lock (threading.Lock): A thread lock that should be shared by all threads that are used to send data over the instance of the client_conn passed to this method."""
         try:
             data = ['MANUAL', 'MANUAL_STAUS', manual_status]
-            print(data)
             pickle_data = pickle.dumps(data)
             if send_lock:
                 with send_lock:
@@ -321,7 +317,6 @@ class LITGuiEventHandler:
         - send_lock (threading.Lock): A thread lock that should be shared by all threads that are used to send data over the instance of the client_conn passed to this method."""
         try:
             data = ['UPDATE_AUTO_STATUS', auto_status]
-            print(data)
             pickle_data = pickle.dumps(data)
             if send_lock:
                 with send_lock:

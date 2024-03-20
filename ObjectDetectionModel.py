@@ -8,6 +8,7 @@ import pickle
 import socket
 import PySimpleGUI as sg    
 from tensorflow.lite.python.interpreter import Interpreter 
+from tensorflow.lite.python.interpreter import load_delegate
 
 try:
     from tflite_runtime.interpreter import Interpreter
@@ -15,7 +16,6 @@ try:
 except:
     pass
 
-    
 import typing
 from multiprocessing import Process, Queue
 
@@ -495,7 +495,7 @@ class ObjectDetectionModel:
         # Load the TensorFlow Lite model with Edge TPU support.
         interpreter = Interpreter(
             model_path=model_path,
-            experimental_delegates=[load_delegate('libedgetpu.so.1')]
+            experimental_delegates=[load_delegate('edgetpu.dll', options={"device": "usb:0"})]
         )        
         return interpreter
 
@@ -596,7 +596,7 @@ class ObjectDetectionModel:
 if __name__ == '__main__':
     host = '192.168.1.2'
     port = 5000
-    model_path = r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/edgetpu.tflite'
+    model_path = r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite'
     label_path = r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/labelmap.txt'
     first_model = ObjectDetectionModel(host, port, model_path, False, -1, label_path)
     port = 5001
