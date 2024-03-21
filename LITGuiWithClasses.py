@@ -194,8 +194,8 @@ if __name__ == '__main__':
     #                                     r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/labelmap.txt')
     host='192.168.0.220'
     ports = [5000, 5001]
-    subsystem_one = LITSubsystemData(0)
-    subsystem_two = LITSubsystemData(1)
+    subsystem_one = LITSubsystemData(0, host=host, port=ports[0])
+    subsystem_two = LITSubsystemData(1, host=host, port=ports[1])
 
     subsystem_list = [subsystem_one, subsystem_two]
     lit_gui = LITGUI(subsystem_list)

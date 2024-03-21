@@ -10,6 +10,7 @@ import socket
 import pickle
 from LITSubsystemInterface import LITSubsystemData
 from utils import AutoLEDData, ManualLEDData
+
 class LITGuiEventHandler:
     """A class handing events with the LITGUI class. The seperation of two allows for this class to be overwritten or manually implemented by other developers to handle their own events in the
     GUI.
@@ -92,12 +93,10 @@ class LITGuiEventHandler:
         if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn:
             led_range = self.get_led_range_from_event()
             if self.get_value_of_element_from_event():
-                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].man.append(LEDData(led_range, self.values[f'-CAMERA_{self.event_camera}_BRIGHTNESSSLIDER-'])) 
+                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].manual_led_data.add_led_range(led_range)
             else:
-                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].manual_led_data_list.append(LEDData(led_range, self.values[f'-CAMERA_{self.event_camera}_BRIGHTNESSSLIDER-'])) 
-            client_conn = self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn
-            thread_lock = self.lit_subsystem_dict[f'CAMREA_{self.event_camera}'].send_lock
-            self.send_manual_led_range_data_with_lock(led_range, status, client_conn, thread_lock)
+                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].manual_led_data.remove_led_range(led_range)
+            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
         return 
 
     def on_manually_control_led_range_slider_event(self):
@@ -106,28 +105,23 @@ class LITGuiEventHandler:
         if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn:
             if self.values[f'-CAMERA_{self.event_camera}_SLIDER_LEFT_TO_RIGHT-']:
                 on_led_range = (0, round(self.values[f'-CAMERA_{self.event_camera}_LEDSLIDER-']))
-                off_led_range = (round(self.values[f'-CAMERA_{self.event_camera}_LEDSLIDER-']), 256)
             elif self.values[f'-CAMERA_{self.event_camera}_SLIDER_RIGHT_TO_LEFT-']:
                 on_led_range = (round(self.values[f'-CAMERA_{self.event_camera}_LEDSLIDER-']), 256)
-                off_led_range = (0, round(self.values[f'-CAMERA_{self.event_camera}_LEDSLIDER-']))
             else:
                 on_led_range = False
-                off_led_range = (0, 256)
             if on_led_range == (0, 0):
                 on_led_range = False
-                off_led_range = (0, 256)
-            client_conn = self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn
-            thread_lock = self.lit_subsystem_dict[f'CAMREA_{self.event_camera}'].send_lock
-            self.send_manual_led_slider_data_with_lock(on_led_range, off_led_range, client_conn, thread_lock)
-
+            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].manual_led_data.set_slider_led_range(on_led_range)
+            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
+        return
+    
     def on_manually_control_led_brightness_slider_event(self):
         """Handles an event in which the user has altered the value of a led brightness slider in one of the LED brightness sliders displayed on the GUI inside of the Subsystem Frames. 
         If there is a connection to a server, this event will update the state of the LED slider brightness specified by the user in the physical LED Subsystem."""
         if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn:
             brightness = round(self.values[f'-CAMERA_{self.event_camera}_BRIGHTNESSSLIDER-'] * .01, 2)
-            client_conn = self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn
-            thread_lock = self.lit_subsystem_dict[f'CAMREA_{self.event_camera}'].send_lock
-            self.send_manual_led_brighntess_data_with_lock(brightness, client_conn, thread_lock)
+            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].manual_led_data.brightness = brightness
+            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
 
             
     def disable_all_manual_options_of_subsystem(self):
@@ -220,7 +214,7 @@ class LITGuiEventHandler:
     def get_value_of_element_from_event(self)->bool:
         """Returns the value of the element where an event spawns."""
         return self.values[self.event]
-        
+    
     def send_manual_led_range_data_with_lock(self, led_range: tuple[int, int], checkbox_status: bool, client_conn: socket.socket, send_lock: threading.Lock)->None:
         """Sends data over a socket connection relevant to the update of the status of an LED Range checkbox. Sends a list where the first index is a string 'MANUAL' used to specify this was a manual update of LEDs, LED_RANGE_APPEND or LED_RANGE_REMOVE, where these strings 
         correspond to True and False respectively, and finally the tuple containing the two integers releveant to the LED Range updated.
@@ -295,6 +289,7 @@ class LITGuiEventHandler:
         - manual_status (bool): Enable or Disable Manual Control of LEDs.
         - client_conn (socket.socket): The socket connection used to pass data.
         - send_lock (threading.Lock): A thread lock that should be shared by all threads that are used to send data over the instance of the client_conn passed to this method."""
+
         try:
             data = ['MANUAL', 'MANUAL_STAUS', manual_status]
             pickle_data = pickle.dumps(data)

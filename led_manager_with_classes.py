@@ -3,7 +3,8 @@ import board
 import neopixel
 import pickle
 import typing
-
+import utils
+from utils import SystemLEDData
 
 class LEDPanels:
     """Used to interface with an LED system. Allows for cascading of NeoPixel Panels of the same size, where sections of the LEDs can be directly altered with APIs.
@@ -28,7 +29,7 @@ class LEDPanels:
         return
 
 
-    def auto_turn_off_led_ranges(self, turn_off_tuple_list: list[tuple], manual_event = False):
+    def auto_turn_off_led_ranges(self, turn_off_tuple_list: list[tuple]):
         """Turn off all ranges in the provided turn_off_tuple_list, this will ignore leds that are currently set to be turned on manually if the manual mode is enabled.
         This will update the LEDs in the same column amongst all of the panels.
         
@@ -38,12 +39,6 @@ class LEDPanels:
             turn_off_tuple_list = [turn_off_tuple_list]
         
         for turn_off_range in turn_off_tuple_list:
-            if self.manual_mode_status and not manual_event:
-                print(f'auto turn off range {turn_off_range}')
-                if self.range_is_in_manual_mode_section(turn_off_range):
-                    continue
-            
-
             first_led = turn_off_range[0] 
             last_led = turn_off_range[-1] 
 
@@ -123,6 +118,19 @@ class LEDPanels:
             self.turn_on_manual_range(self.manual_led_with_sliders)
         return
 
+    def turn_on_leds(self, leds_tuple: typing.Union[tuple[int, int], None], brightness: float)->None:
+        if not leds_tuple:
+            return
+        leds_tuple_mid_panel = (512-leds_tuple[1], 512-leds_tuple[0])
+        leds_tuple_top_panel = (leds_tuple[0]+512, leds_tuple[1]+512)
+        
+        self.board_pixels[leds_tuple[0]:leds_tuple[1]] = [(0,0,round(255*brightness))] * (leds_tuple[1]-leds_tuple[0])
+
+        self.board_pixels[leds_tuple_mid_panel[0]:leds_tuple_mid_panel[1]] = [(0,0,round(255*brightness))] * (leds_tuple_mid_panel[1]-leds_tuple_mid_panel[0])
+
+        self.board_pixels[leds_tuple_top_panel[0]:leds_tuple_top_panel[1]] = [(0,0,round(255*brightness))] * (leds_tuple_top_panel[1]-leds_tuple_top_panel[0])
+
+        return
 
     def update_leds_from_data_packets(self, data: list):
         """Used to update LEDs from a server connection, first the data is assumed to be pickled and therefore must be unpickled. This handles packets received from the ObjectDetectionModel or the LITGui Modules.
@@ -130,22 +138,31 @@ class LEDPanels:
         Parameters:
         - data: UPDATE"""
 
-        try:
-            detect_obj = pickle.loads(data)
-        except:
-            detect_obj = data
-        try:
-            if detect_obj[0] == 'AUTO_LED_DATA':
-                if detect_obj[1]:
-                    self.auto_update_leds(detect_obj[1])
-                if detect_obj[2]:
-                    self.auto_turn_off_led_ranges(detect_obj[2])
-            elif detect_obj[0] == 'UPDATE_AUTO_STATUS':
-                self.update_auto_mode_status(detect_obj[1])
-            elif detect_obj[0] == 'MANUAL':
-                self.handle_manual_mode_event(detect_obj)
-        except:
-            pass
+        # try:
+        loaded_data = pickle.loads(data)
+        # except:
+        #     loaded_data = data
+        if loaded_data[0] == 0:
+            for led_range in loaded_data[1]:
+                self.turn_on_leds(led_range, loaded_data[2])
+            self.auto_turn_off_led_ranges(loaded_data[3])
+        elif loaded_data[0] == 1:
+            for led_tuple in loaded_data[1]:
+                self.turn_on_leds(led_tuple[0], led_tuple[1])
+            self.auto_turn_off_led_ranges(loaded_data[2])
+        return
+        # try:
+        #     if detect_obj[0] == 'AUTO_LED_DATA':
+        #         if detect_obj[1]:
+        #             self.auto_update_leds(detect_obj[1])
+        #         if detect_obj[2]:
+        #             self.auto_turn_off_led_ranges(detect_obj[2])
+        #     elif detect_obj[0] == 'UPDATE_AUTO_STATUS':
+        #         self.update_auto_mode_status(detect_obj[1])
+        #     elif detect_obj[0] == 'MANUAL':
+        #         self.handle_manual_mode_event(detect_obj)
+        # except:
+        #     pass
 
     def range_is_in_manual_mode_section(self, turn_off_range: tuple[int, int])->bool:
         """Check if a range to be updated automatically is currently being controlled by one of the manually settings.
