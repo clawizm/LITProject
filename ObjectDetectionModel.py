@@ -10,7 +10,6 @@ import PySimpleGUI as sg
 from utils import AutoLEDData
 from tensorflow.lite.python.interpreter import Interpreter 
 from tensorflow.lite.python.interpreter import load_delegate
-
 try:
     from tflite_runtime.interpreter import Interpreter
     from tflite_runtime.interpreter import load_delegate
@@ -21,6 +20,37 @@ import typing
 from multiprocessing import Process, Queue
 
 
+def create_fov_range_list(hfov: int, num_of_sections: int)->typing.Union[list[float], list[int]]:
+    """Returns a list of float or integer values equally spaced apart by setting the hfov arguement into 2 seperate values, which are the the positive and negative states of the number divided by two.
+    Then these two numbers are used to create a list of size 'num_of_sections' where the number at index 0 is the negative state and the number at the last index is the positive state. All numbers in the equal distance apart,
+    by an amount equal to hfov / num_of_sections.
+    
+    Parameters:
+    - hfov (int): The horizontal field of view of a camera.
+    - num_of_sections (int): The desired length of the list containing equally spaced numbers ranging from the negative value of hfov/2 to the postive value of hfov/2."""
+
+    max_positive_fov = round(hfov / 2)
+    max_negative_fov = -1 * max_positive_fov
+    lst = [max_negative_fov + x * (max_positive_fov - max_negative_fov) / num_of_sections for x in range(num_of_sections + 1)]
+    lst.sort(reverse=True)
+    return lst
+
+def create_led_tuple_range_list(number_of_leds: int, num_of_sections: int)->list[tuple[int, int]]:
+    """Returns a list of tuples containing the start and stopping point of LED ranges based on the number of LEDs of the subsystem specified divided by the number of sections the user would 
+    like the subsystem divided into.
+    
+    Parameters:
+    - number_of_leds (int): The number of LEDs used in a panel. If two panels are used horizontally, the double the amount of LEDs.
+    - num_of_sections (int): The amount of equally spaced ranges you would like to split the number of LEDs into.
+    """
+
+    led_tuples_list = []
+    leds_ranges = round(number_of_leds/num_of_sections)
+    i = 0
+    while i < number_of_leds:
+        led_tuples_list.append((i, i+leds_ranges))
+        i += leds_ranges
+    return led_tuples_list
 
 def brightness_based_on_distance(distance: int)->float:
     """Returns a brightness percetange based from 0.00 to 1.00:
@@ -44,27 +74,19 @@ def brightness_based_on_distance(distance: int)->float:
     else:
         return 1.00
 
-def determine_leds_range_for_angle(angle_x: float)->tuple:
-    """Returns the LEDs to turn on based on the angle of the object provided.
+def determine_leds_range_for_angle(angle_x: typing.Union[float, int], led_sections: list[tuple[int, int]], hfov_range_list: typing.Union[list[float], list[int]])->typing.Union[tuple, None]:
+    """Returns the LEDs to turn on based on the angle of the object provided. This function finds the range this angle lies in based on the list of HFOV ranges, and returns the respective led section from the led_sections list.
     
     Parameters:
-    angle_x (float): The angle of the object detected respective to the camera of the subsystem."""
-    if angle_x <= 39 and angle_x > 28.25:
-        return 0, 32
-    elif angle_x <= 28.25 and angle_x > 19.75:
-        return 32, 64
-    elif angle_x <= 19.75 and angle_x > 10.00:
-        return 64, 96
-    elif angle_x <= 10.00 and angle_x > 0:
-        return 96, 128
-    elif angle_x >= -9.75 and angle_x < 0:
-        return 128, 160
-    elif angle_x >= -19.5 and angle_x < -9.75:
-        return 192, 224
-    elif angle_x >= -29.25 and angle_x < -19.5:
-        return 224, 256
-    else:
-        None
+    - angle_x (float): The angle of the object detected respective to the camera of the subsystem.
+    - led_sections (list[tuple[int, int]]): The list of the seperate sections used to each illuminate an object detected.
+    - hfov_range_list (list[float]): The list of hfov regions that correlate to each are of leds to illuminate."""
+    i = 0
+    while i < len(hfov_range_list)-1:
+        if angle_x <= hfov_range_list[i] and angle_x >= hfov_range_list[i+1]:
+            return led_sections[i]
+        i+=1
+    return None
 
 def estimate_distance(found_width: float, focal_length: float, known_width: float):
     """Estimate the distance of an object based on the width found for the object.
@@ -168,8 +190,6 @@ class ObjectDetectionModel:
     input_mean: float = 127.5
     input_std: float = 127.5
     frame_rate_calc: int = 1
-    current_led_list_of_dicts: list[dict] = []
-    curr_auto_led_data_list: list[tuple] = []
 
     def __init__(self, model_path: str, use_edge_tpu: bool, camera_index: int, label_path: str, 
                  min_conf_threshold: float= 0.5,window: typing.Union[sg.Window, None]=None, image_window_name: typing.Union[str, None]=None, 
@@ -198,7 +218,15 @@ class ObjectDetectionModel:
         self.set_boxes_clases_and_scores_idxs()
         self.detection_thread = None
         self.detection_active = threading.Event()
+        self.current_led_list_of_dicts: list[dict] = []
+        self.curr_auto_led_data_list: list[tuple] = []
+        self.led_sections: list[tuple[int, int]]
 
+    def set_led_ranges_for_objects(self, number_of_leds: int, number_of_sections: int):
+        self.led_sections = create_led_tuple_range_list(number_of_leds, number_of_sections)
+        self.fov_sections = create_fov_range_list(self.video_stream.hfov, number_of_sections)
+        return
+    
     def set_client_conn(self, client_conn: socket.socket):
         """Set the client conn attribute."""
         self.client_conn = client_conn
@@ -220,7 +248,7 @@ class ObjectDetectionModel:
         return
     
 
-    def start_detection(self):
+    def start_detection(self, lit_subsystem_data):
         """Verifies that the current instance of this class does not already have a thread running that spawned from this method, and then initializes a new instance of the VideoStream class with the camera associated with the current instance of this class.
         To keep control of the threads spawned from this method, we start the main detection loop with the detection thread attribute set during this method. 
         
@@ -228,7 +256,7 @@ class ObjectDetectionModel:
         if self.detection_thread is None or not self.detection_thread.is_alive():
             self.detection_active.set()  # Signal that detection should be active
             self.video_stream = VideoStream(self.camera_index)  # Recreate VideoStream to ensure it's fresh
-            self.detection_thread = threading.Thread(target=self.main_detection_loop, daemon=True)
+            self.detection_thread = threading.Thread(target=self.main_detection_loop, args=(lit_subsystem_data,), daemon=True)
             self.detection_thread.start()
         return
     
@@ -240,12 +268,10 @@ class ObjectDetectionModel:
         if self.video_stream:
             self.video_stream.stop() 
         time.sleep(3)
-        if self.client_conn:
-            send_data_for_led_addressing(None, None,self.client_conn, self.thread_lock)
         return
     
 
-    def main_detection_loop(self):
+    def main_detection_loop(self, lit_subsytem_data):
         """Performs Object Dectection on the current video stream passed to this instance. This runs while the thread is set, and will terminate the loop and thread running this method once the Thread.Event instance used to control this method is cleared.
         Using helper functions, this method will start the thread reading frammes from the camera used in the current instance, detected all objects in the current frame, draw boxes around them, 
         and send relevant LED data to the subsystem being controled from this instance."""
@@ -256,13 +282,13 @@ class ObjectDetectionModel:
                 self.t1 = cv2.getTickCount()
                 self.perform_detection_on_current_frame()
                 boxes, classes, scores = self.get_boxes_classes_and_scores_from_current_frame()
-                self.loop_over_all_objects_detected(boxes, classes, scores)
+                self.loop_over_all_objects_detected(boxes, classes, scores, lit_subsytem_data)
             except:
                 pass
         self.video_stream.stop()
         return
 
-    def loop_over_all_objects_detected(self, boxes, classes, scores):
+    def loop_over_all_objects_detected(self, boxes, classes, scores, lit_subsystem_data):
         """Iterates over all objects detected in the current frame, draws rectangles around them, places labels, calculates distance, horizontal angle, vertical angle, and uses this data to determine the LEDs to turn on a brightness respective to the distance.
         If there is a connect to a server, this data is sent over the server to a device that can directly interface with the LEDs.
         
@@ -282,16 +308,18 @@ class ObjectDetectionModel:
                 self.set_label_on_obj_in_frame(classes[i], scores[i])
                 self.set_mid_point_current_obj()
                 self.set_width_of_current_obj()
-                distance = estimate_distance(self.current_obj_width, self.video_stream.focal_length, self.ref_person_width)
-                angle_x = calculate_horz_angle(self.current_obj_mid_point_x, self.video_stream.video_width, self.video_stream.hfov)
-                angle_y = calculate_vert_angle(self.current_obj_mid_point_y, self.video_stream.video_heigth, self.video_stream.hfov)
-                brightness = brightness_based_on_distance(distance)
-                led_tuple = determine_leds_range_for_angle(angle_x)
-                curr_led_data = AutoLEDData(led_tuple, brightness)
-                curr_auto_led_data_list.append(curr_led_data)
-
+                if self.led_sections:
+                    distance = estimate_distance(self.current_obj_width, self.video_stream.focal_length, self.ref_person_width)
+                    angle_x = calculate_horz_angle(self.current_obj_mid_point_x, self.video_stream.video_width, self.video_stream.hfov)
+                    angle_y = calculate_vert_angle(self.current_obj_mid_point_y, self.video_stream.video_heigth, self.video_stream.hfov)
+                    brightness = brightness_based_on_distance(distance)
+                    led_tuple = determine_leds_range_for_angle(angle_x=angle_x, led_sections=self.led_sections, hfov_range_list=self.fov_sections)
+                    curr_led_data = AutoLEDData(led_tuple, brightness)
+                    curr_auto_led_data_list.append(curr_led_data)
         try:
-            self.curr_auto_led_data_list = curr_auto_led_data_list               
+            self.curr_auto_led_data_list = curr_auto_led_data_list  
+            if self.client_conn:
+                lit_subsystem_data.send_data_for_led_addressing(False)
         except:
             pass
         # cv2.putText(self.frame,'FPS: {0:.2f}'.format(self.frame_rate_calc),(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,0),2,cv2.LINE_AA) #can prolly just delete will test.
@@ -303,7 +331,7 @@ class ObjectDetectionModel:
             except:
                 pass
         else:
-            print(distance)
+            pass
         t2 = cv2.getTickCount()
         time1 = (t2-self.t1)/self.freq
         self.frame_rate_calc= 1/time1

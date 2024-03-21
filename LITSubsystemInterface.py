@@ -3,15 +3,13 @@ import threading
 import pickle
 import socket
 from utils import find_missing_numbers_as_ranges_tuples, is_overlap, SystemLEDData
-from ObjectDetectionModel import ObjectDetectionModel
 import itertools
+from ObjectDetectionModel import ObjectDetectionModel
+import sys
 
-class LITSubsystemData(SystemLEDData):
+class LITSubsystemData():
     """A data structure used to store information relevant between the GUI, ObjectDetectionModel used for performing Object Detection on the camera specified, and the potential server the user 
     would like data sent to for addressing the LED subsystems."""
-    manual_status: bool = False
-    auto_status: bool = False
-    
     
     def __init__(self, camera_idx: int, object_detection_model: typing.Union[ObjectDetectionModel, None] = None, number_of_leds: int = 256,
                  number_of_sections: int = 8, host: str = None, port: int = None) -> None:
@@ -32,8 +30,11 @@ class LITSubsystemData(SystemLEDData):
         self.host = host
         self.port = port
         self.attempt_to_create_client_conn()
-        SystemLEDData.__init__(self, None, None)
-        
+        self.system_led_data = SystemLEDData(None, None)
+        self.manual_status: bool = False
+        self.auto_status: bool = False
+        self.force_all_leds_on: bool = False 
+
     def attempt_to_create_client_conn(self):
         """Called in the constructor, used to create a connection to the server if provided a host and port. This connection is unique to each instance, as well as the lock creatred when connecting.
         This connection and thread lock is also passed to the object detection model if provide in the constructor. If the server and port are not present, the client_conn and send_lock
@@ -42,11 +43,12 @@ class LITSubsystemData(SystemLEDData):
         if self.host and self.port:
             try:
                 self.send_lock = threading.Lock()
-                self.client_conn = socket.socket()
+                self.client_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.client_conn.connect((self.host,self.port))
                 if self.object_detection_model:
                     self.object_detection_model.set_client_conn(self.client_conn)
                     self.object_detection_model.set_thread_lock(self.send_lock)
+                    self.object_detection_model.set_led_ranges_for_objects(self.number_of_leds, self.number_of_sections)
                 return
             except:
                 pass
@@ -54,21 +56,31 @@ class LITSubsystemData(SystemLEDData):
         self.send_lock = False
         return
 
-
     def send_data_for_led_addressing(self, manual_event: bool)->None:
-        """Sends data to the respective LED subsystem associated with the instance of this ObjectDetectionModel using a socket connection. This is used to update the state of LEDs throughout the subsystem."""
-        self.update_led_data_for_sending(self.auto_status, self.manual_status)        
+        """Sends data to the respective LED subsystem associated with the instance of this ObjectDetectionModel using a socket connection. This is used to update the state of LEDs throughout the subsystem.
+        The reason for the manual event argument is so that we don't continously address manual LEDs, as they only change on manual LED events. This saves time addressing LEDs.
         
-        if manual_event:
-            data = [0, self.full_manual_list, self.manual_led_data.brightness, self.turn_off_leds.manual_led_tuple_list]
+        Parameters:
+        - manual_event (bool): A boolean indicating if this method was called a part of a manual control event in the GUI, or an ObjectDetectionModel sending led data."""
+        if self.force_all_leds_on and self.manual_status:
+            data = [0, [(0,self.number_of_leds)], 1, []]
+
+        elif self.auto_status or self.manual_status:
+            self.system_led_data.update_led_data_for_sending(self.auto_status, self.manual_status, self.number_of_leds)                    
+            if manual_event:
+                data = [0, self.system_led_data.full_manual_list, self.system_led_data.manual_led_data.brightness, self.system_led_data.turn_off_leds.manual_led_tuple_list]
+            else:
+                data = [1, [(auto_led.led_range, auto_led.brightness) for auto_led in self.system_led_data.auto_led_data_list], self.system_led_data.turn_off_leds.manual_led_tuple_list]
+
         else:
-            data = [1, [(auto_led.led_range, auto_led.brightness) for auto_led in self.auto_led_data_list], self.turn_off_leds.manual_led_tuple_list]
-        
+            data = [0, [], 0, [0,self.number_of_leds]]
+
+        print(data)
         pickle_data = pickle.dumps(data)
         if self.send_lock:
             with self.send_lock:
                 self.client_conn.send(pickle_data)
-        else:
+        elif self.client_conn:
             self.client_conn.send(pickle_data)        
         return
     
