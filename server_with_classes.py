@@ -11,14 +11,15 @@ from multiprocessing import Process
 
 class LITSubsystemServer:
 
-    def __init__(self, lit_subsystem_leds: LEDPanels, port: int, host: str=''):
+    def __init__(self, lit_subsystem_leds: LEDPanels, port: int, host: str='', run_forever: bool = False):
         self.lit_subsystem_leds = lit_subsystem_leds
         self.host = host
         self.port = port
-        
+        self.run_forever = run_forever
+
     def main_server_loop(self):
-        s = socket.socket()
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #avoid reuse error msg
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #avoid reuse error msg
         s.bind(('', self.port))
         print("Server started. Waiting for connection...")
         s.listen(5)
@@ -27,9 +28,15 @@ class LITSubsystemServer:
         while True:
             #data is in bytes format, use decode() to transform it into a string
             data = c.recv(4096)
-            if not data:
-                break
             self.lit_subsystem_leds.update_leds_from_data_packets(data)
+            if not data:
+                if self.run_forever:
+                    s.close()
+                    print('Restarting!')
+                    self.main_server_loop()
+                else:
+                    break
+            # self.lit_subsystem_leds.update_leds_from_data_packets(data)
         print("Disconnected. Exiting.")
 
 def run_lit_subsystem_servers_in_parallel(lit_servers: typing.Union[list[LITSubsystemServer], LITSubsystemServer]):
