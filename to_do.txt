@@ -4,4 +4,4 @@ Once everything works:
     - Add checkbox showing server connection status, and if server breaks we want to restart server on pi, and then retry to connect to server on computer. If its successful we will update checkbox and disable it.
     - We Don't want the server to break out of its retry Loop Until GUI is killed.
     - We could possibly add option on GUI to keep server running indefinitely. Like a main killswitch hidden somewhere.
-    
+    - While the auto detect is runnining, we should send events only from auto detect, but update values stored in the manual info sections on the fly. That way the auto detect method can call the send data method
