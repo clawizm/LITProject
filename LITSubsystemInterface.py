@@ -7,10 +7,11 @@ import itertools
 from ObjectDetectionModel import ObjectDetectionModel
 import sys
 
+
+
 class LITSubsystemData():
     """A data structure used to store information relevant between the GUI, ObjectDetectionModel used for performing Object Detection on the camera specified, and the potential server the user 
     would like data sent to for addressing the LED subsystems."""
-    
     def __init__(self, camera_idx: int, object_detection_model: typing.Union[ObjectDetectionModel, None] = None, number_of_leds: int = 256,
                  number_of_sections: int = 8, host: str = None, port: int = None) -> None:
         """
@@ -29,11 +30,15 @@ class LITSubsystemData():
         self.number_of_sections = number_of_sections
         self.host = host
         self.port = port
-        self.attempt_to_create_client_conn()
         self.system_led_data = SystemLEDData(None, None)
         self.manual_status: bool = False
         self.auto_status: bool = False
         self.force_all_leds_on: bool = False 
+        if self.object_detection_model:
+            self.object_detection_model.set_send_data_callback(self.send_data_for_led_addressing)
+            self.object_detection_model.set_led_ranges_for_objects(number_of_leds=number_of_leds, number_of_sections=number_of_sections)
+            self.object_detection_model.system_led_data = self.system_led_data
+        self.attempt_to_create_client_conn()
 
     def attempt_to_create_client_conn(self):
         """Called in the constructor, used to create a connection to the server if provided a host and port. This connection is unique to each instance, as well as the lock creatred when connecting.
@@ -41,16 +46,15 @@ class LITSubsystemData():
         attributes are set to False."""
 
         if self.host and self.port:
-            try:
+            # try:
                 self.send_lock = threading.Lock()
                 self.client_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.client_conn.connect((self.host,self.port))
                 if self.object_detection_model:
                     self.object_detection_model.set_client_conn(self.client_conn)
                     self.object_detection_model.set_thread_lock(self.send_lock)
-                    self.object_detection_model.set_led_ranges_for_objects(self.number_of_leds, self.number_of_sections)
                 return
-            except:
+            # except:
                 pass
         self.client_conn = False
         self.send_lock = False
@@ -62,6 +66,8 @@ class LITSubsystemData():
         
         Parameters:
         - manual_event (bool): A boolean indicating if this method was called a part of a manual control event in the GUI, or an ObjectDetectionModel sending led data."""
+ 
+
         if self.force_all_leds_on and self.manual_status:
             data = [0, [(0,self.number_of_leds)], 1, []]
 
@@ -69,12 +75,20 @@ class LITSubsystemData():
             self.system_led_data.update_led_data_for_sending(self.auto_status, self.manual_status, self.number_of_leds)                    
             if manual_event:
                 data = [0, self.system_led_data.full_manual_list, self.system_led_data.manual_led_data.brightness, self.system_led_data.turn_off_leds.manual_led_tuple_list]
-            else:
+            elif self.system_led_data.auto_led_data_list:
                 data = [1, [(auto_led.led_range, auto_led.brightness) for auto_led in self.system_led_data.auto_led_data_list], self.system_led_data.turn_off_leds.manual_led_tuple_list]
-
+            elif self.manual_status:
+                try:
+                    if self.system_led_data.full_manual_list:
+                        data = [0, self.system_led_data.full_manual_list, self.system_led_data.manual_led_data.brightness, self.system_led_data.turn_off_leds.manual_led_tuple_list]
+                    else:
+                        data = [0, [], 0, [(0,self.number_of_leds)]]
+                except:
+                        data = [0, [], 0, [(0,self.number_of_leds)]]
+            else:
+                data = [0, [], 0, [(0,self.number_of_leds)]]
         else:
-            data = [0, [], 0, [0,self.number_of_leds]]
-
+            data = [0, [], 0, [(0,self.number_of_leds)]]
         print(data)
         pickle_data = pickle.dumps(data)
         if self.send_lock:

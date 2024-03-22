@@ -17,8 +17,8 @@ class LITSubsystemServer:
         self.port = port
         
     def main_server_loop(self):
-        s = socket.socket()
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #avoid reuse error msg
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #avoid reuse error msg
         s.bind(('', self.port))
         print("Server started. Waiting for connection...")
         s.listen(5)
@@ -27,6 +27,10 @@ class LITSubsystemServer:
         while True:
             #data is in bytes format, use decode() to transform it into a string
             data = c.recv(4096)
+            try:
+                print(pickle.loads(data))
+            except:
+                print(data)
             if not data:
                 break
             self.lit_subsystem_leds.update_leds_from_data_packets(data)

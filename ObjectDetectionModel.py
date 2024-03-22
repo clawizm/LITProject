@@ -193,7 +193,7 @@ class ObjectDetectionModel:
 
     def __init__(self, model_path: str, use_edge_tpu: bool, camera_index: int, label_path: str, 
                  min_conf_threshold: float= 0.5,window: typing.Union[sg.Window, None]=None, image_window_name: typing.Union[str, None]=None, 
-                 client_conn: socket.socket = None, thread_lock: threading.Lock = None, ref_person_width: int = 20) -> None:
+                 client_conn: socket.socket = None, thread_lock: threading.Lock = None, ref_person_width: int = 20, hfov: int = 78, vfov:int = 48, ) -> None:
         """Creates an Object for performing object detection on a camera feed. Uses either an EdgeTPU or CPU to perform computations.
         
         Parameters:
@@ -224,7 +224,7 @@ class ObjectDetectionModel:
 
     def set_led_ranges_for_objects(self, number_of_leds: int, number_of_sections: int):
         self.led_sections = create_led_tuple_range_list(number_of_leds, number_of_sections)
-        self.fov_sections = create_fov_range_list(self.video_stream.hfov, number_of_sections)
+        self.number_of_sections = number_of_sections
         return
     
     def set_client_conn(self, client_conn: socket.socket):
@@ -247,8 +247,11 @@ class ObjectDetectionModel:
         self.image_window_name = image_window
         return
     
+    def set_send_data_callback(self, callback):
+        self.send_data_callback = callback
+        return
 
-    def start_detection(self, lit_subsystem_data):
+    def start_detection(self):
         """Verifies that the current instance of this class does not already have a thread running that spawned from this method, and then initializes a new instance of the VideoStream class with the camera associated with the current instance of this class.
         To keep control of the threads spawned from this method, we start the main detection loop with the detection thread attribute set during this method. 
         
@@ -256,7 +259,8 @@ class ObjectDetectionModel:
         if self.detection_thread is None or not self.detection_thread.is_alive():
             self.detection_active.set()  # Signal that detection should be active
             self.video_stream = VideoStream(self.camera_index)  # Recreate VideoStream to ensure it's fresh
-            self.detection_thread = threading.Thread(target=self.main_detection_loop, args=(lit_subsystem_data,), daemon=True)
+            self.fov_sections = create_fov_range_list(self.video_stream.hfov, self.number_of_sections)
+            self.detection_thread = threading.Thread(target=self.main_detection_loop, daemon=True)
             self.detection_thread.start()
         return
     
@@ -271,7 +275,7 @@ class ObjectDetectionModel:
         return
     
 
-    def main_detection_loop(self, lit_subsytem_data):
+    def main_detection_loop(self):
         """Performs Object Dectection on the current video stream passed to this instance. This runs while the thread is set, and will terminate the loop and thread running this method once the Thread.Event instance used to control this method is cleared.
         Using helper functions, this method will start the thread reading frammes from the camera used in the current instance, detected all objects in the current frame, draw boxes around them, 
         and send relevant LED data to the subsystem being controled from this instance."""
@@ -282,13 +286,13 @@ class ObjectDetectionModel:
                 self.t1 = cv2.getTickCount()
                 self.perform_detection_on_current_frame()
                 boxes, classes, scores = self.get_boxes_classes_and_scores_from_current_frame()
-                self.loop_over_all_objects_detected(boxes, classes, scores, lit_subsytem_data)
+                self.loop_over_all_objects_detected(boxes, classes, scores)
             except:
                 pass
         self.video_stream.stop()
         return
 
-    def loop_over_all_objects_detected(self, boxes, classes, scores, lit_subsystem_data):
+    def loop_over_all_objects_detected(self, boxes, classes, scores):
         """Iterates over all objects detected in the current frame, draws rectangles around them, places labels, calculates distance, horizontal angle, vertical angle, and uses this data to determine the LEDs to turn on a brightness respective to the distance.
         If there is a connect to a server, this data is sent over the server to a device that can directly interface with the LEDs.
         
@@ -317,9 +321,9 @@ class ObjectDetectionModel:
                     curr_led_data = AutoLEDData(led_tuple, brightness)
                     curr_auto_led_data_list.append(curr_led_data)
         try:
-            self.curr_auto_led_data_list = curr_auto_led_data_list  
             if self.client_conn:
-                lit_subsystem_data.send_data_for_led_addressing(False)
+                self.system_led_data.auto_led_data_list = curr_auto_led_data_list  
+                self.send_data_callback(False)
         except:
             pass
         # cv2.putText(self.frame,'FPS: {0:.2f}'.format(self.frame_rate_calc),(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,0),2,cv2.LINE_AA) #can prolly just delete will test.

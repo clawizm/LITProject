@@ -49,7 +49,10 @@ class SystemLEDData:
     def update_led_data_for_sending(self, auto_status: bool, manual_status: bool, num_of_leds: int = 256):
         if auto_status and manual_status:
             self.full_manual_list = self.manual_led_data.generate_full_manual_led_list()
-            full_led_list = list(itertools.chain.from_iterable([self.full_manual_list, [auto_led.led_range for auto_led in self.auto_led_data_list]]))
+            if self.auto_led_data_list:
+                full_led_list = list(itertools.chain.from_iterable([self.full_manual_list, [auto_led.led_range for auto_led in self.auto_led_data_list]]))
+            else:
+                full_led_list = self.full_manual_list
             missing_leds = find_missing_numbers_as_ranges_tuples(full_led_list, num_of_leds)
             self.turn_off_leds.manual_led_tuple_list = missing_leds
             self.auto_led_data_list = remove_overlapping_ranges_between_auto_led_and_manual_leds(self.full_manual_list, self.auto_led_data_list)
@@ -64,6 +67,7 @@ class SystemLEDData:
             else:
                 missing_leds = find_missing_numbers_as_ranges_tuples(full_auto_list, num_of_leds)
             self.turn_off_leds.manual_led_tuple_list = missing_leds
+
         return
     
 
@@ -76,7 +80,7 @@ def is_overlap(range1, range2):
 
 def find_missing_numbers_as_ranges_tuples(ranges, all_numbers: int) -> typing.Union[list[tuple], None]:
     if not ranges:
-        return []
+        return [(0, all_numbers)]
 
     # Initialize a set with all numbers from 0 to 256
     all_numbers = set(range(all_numbers))
@@ -112,8 +116,13 @@ def find_missing_numbers_as_ranges_tuples(ranges, all_numbers: int) -> typing.Un
     
 
 def remove_overlapping_ranges_between_auto_led_and_manual_leds(manual_led_tuple_list: list[tuple[int, int]], auto_led_data_list: list[AutoLEDData]):
-    if not auto_led_data_list or not manual_led_tuple_list:
+    if not auto_led_data_list and not manual_led_tuple_list:
         return None
+    elif not manual_led_tuple_list:
+        return auto_led_data_list
+    elif not auto_led_data_list:
+        return None
+    
     for led_range in manual_led_tuple_list:
         for auto_led in auto_led_data_list:
             if is_overlap(auto_led.led_range, led_range):

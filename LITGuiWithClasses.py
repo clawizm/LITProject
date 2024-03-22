@@ -27,6 +27,7 @@ class LITGUI(LITGuiEventHandler):
         Parameters:
         - lit_subsystem_data (typing.Union[LITSubsystemData, list[LITSubsystemData]]): Will create a seperate section in the GUI for each subsystem passed, whether in a list of Length N, or 
         if a single instance of LITSubsystemData is passed."""
+        LITGuiEventHandler.__init__(self)
         self.led_tuples_dict_of_list: dict[str, list[tuple[int, int]]] = {}
         self.object_detection_model_dict: dict[str, typing.Union[ObjectDetectionModel, None]] = {}
         self.lit_subsystem_dict: dict[str, LITSubsystemData] = {}
@@ -123,9 +124,11 @@ class LITGUI(LITGuiEventHandler):
     def create_image_preview_section(self):
         """Creates the image element for the current Subsystem Frame being created. This is video feed will be displayed."""
         if self.camera_idx == 0:
-            camera_preview = [sg.Image(filename=r'Jason.png', key=f'-CAMERA_{self.camera_idx}_FEED-', size=(720, 480))] 
+            camera_preview = [sg.Image(filename=r'C:\Users\brand\OneDrive\Documents\SeniorDesignNewAPproah\LITProject-NewApproach\Jason.png',
+                                        key=f'-CAMERA_{self.camera_idx}_FEED-', size=(720, 480))] 
         else:
-            camera_preview = [sg.Image(filename=r'Lebron.png', key=f'-CAMERA_{self.camera_idx}_FEED-', size=(720, 480))]
+            camera_preview = [sg.Image(filename=r'C:\Users\brand\OneDrive\Documents\SeniorDesignNewAPproah\LITProject-NewApproach\Lebron.png', 
+                                       key=f'-CAMERA_{self.camera_idx}_FEED-', size=(720, 480))]
 
         return camera_preview
 
@@ -185,14 +188,14 @@ class LITGUI(LITGuiEventHandler):
     
 
 if __name__ == '__main__':
-    # obj_detector_one = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
+    obj_detector_one = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
+                                        r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
+    # obj_detector_two = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, -1, 
     #                                     r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
-    # obj_detector_two = ObjectDetectionModel(r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/detect.tflite', False, 2, 
-    #                                     r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/labelmap.txt')
     host='192.168.0.220'
     ports = [5000, 5001]
-    subsystem_one = LITSubsystemData(0, number_of_leds=256, number_of_sections=8)
-    subsystem_two = LITSubsystemData(1, number_of_leds=256, number_of_sections=8)
+    subsystem_one = LITSubsystemData(0, obj_detector_one, number_of_leds=256, number_of_sections=8, host=host, port = ports[0])
+    subsystem_two = LITSubsystemData(1,number_of_leds=256, number_of_sections=8, host=host, port = ports[1])
 
     subsystem_list = [subsystem_one, subsystem_two]
     lit_gui = LITGUI(subsystem_list)
