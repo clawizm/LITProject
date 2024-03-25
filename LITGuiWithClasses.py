@@ -6,80 +6,23 @@ import ObjectDetectionModel
 from ObjectDetectionModel import ObjectDetectionModel
 import threading
 import socket
+import pickle
+from LITSubsystemInterface import LITSubsystemData
+import multiprocessing
+import argparse
+import math
 # used to prevent popup froms occur while debugging and poential errors that are inevitable but caught with try and excepts from also creating annoying popups
 sg.set_options(suppress_raise_key_errors=True, suppress_error_popups=True, suppress_key_guessing=True)
 
 
-class LITSubsystemData():
-    """A data structure used to store information relevant between the GUI, ObjectDetectionModel used for performing Object Detection on the camera specified, and the potential server the user 
-    would like data sent to for addressing the LED subsystems."""
 
-    def __init__(self, camera_idx: int, object_detection_model: typing.Union[ObjectDetectionModel, None] = None, number_of_leds: int = 256,
-                 number_of_sections: int = 8, host: str = None, port: int = None) -> None:
-        """
-        Parameters:
-        - camera_idx (int): The USB ID number for the camera of this Subsystem. This is how the device is identified by the OS.
-        - object_detection_model (typing.Union[ObjectDetectionModel, None]): The detection model used to perform inference on the camera_idx.
-        - number_of_leds (int): The number of LEDs of the LED Subsystem.
-        - number_of_sections (int): When specifying how the lights would like to be sectionalzied when attempting to illuminate an object, this value is used to divide the LED Subsystem
-                                    into an equal number of sections equal to number_of_sections. The larger this number the smalled the column illuminated when an object is detected.
-        - host (str): The Server IP Address where information will be sent, involving LEDs to Illumuniate.     
-        - port (int): The specific port you would like to create your connectiom to the server with. 
-        """
-        self.camera_idx = camera_idx
-        self.object_detection_model = object_detection_model
-        self.number_of_leds = number_of_leds
-        self.number_of_sections = number_of_sections
-        self.host = host
-        self.port = port
-        self.attempt_to_create_client_conn()
-
-    def attempt_to_create_client_conn(self):
-        """Called in the constructor, used to create a connection to the server if provided a host and port. This connection is unique to each instance, as well as the lock creatred when connecting.
-        This connection and thread lock is also passed to the object detection model if provide in the constructor. If the server and port are not present, the client_conn and send_lock
-        attributes are set to False."""
-
-        if self.host and self.port:
-            try:
-                self.send_lock = threading.Lock()
-                self.client_conn = socket.socket()
-                self.client_conn.connect((self.host,self.port))
-                if self.object_detection_model:
-                    self.object_detection_model.set_client_conn(self.client_conn)
-                    self.object_detection_model.set_thread_lock(self.send_lock)
-                return
-            except:
-                pass
-        self.client_conn = False
-        self.send_lock = False
-        return
 
 class LITGUI(LITGuiEventHandler):
     """Abstract GUI Class used to create a GUI that displays live camera feed for N number of cameras, with each camera camera in the GUI having its own section to turn off and on
     Object Detection, if the user provides a ObjectDetectionModel for each Subsystem passed. Allows for the manual control of LED subsystems associated with each Subsystem represented by their 
     unique cameras. Can be scalled to as many Cameras and Subsystems the user would like to run.
-    
-    Attributes:
-    
-    - led_tuples_dict_of_list (dict[list[tuple[int, int]]]): A dictionary where the key is the camera_idx of the current Subsystem being referenced, such as 'CAMERA_0'. The values stores
-    are a list of tuples containing two integers, where the integers are the start and stop values of ranges of the LEDSubsystem. These ranges are unqiue to each checkbox in the 'Manually Control LED Ranges Section'.
-
-    - object_detection_model_dict (dict[str, typing.Union[ObjectDetectionModel, None]]): A dictonary where each key is a camera plus its index, such as 'CAMERA_0'.
-    Each Camera in the GUI has the option of being part of a subsystem, bus is not required. 
-    This dict will store each Camera passed to the GUI, and store whether that camera is used for performing Object Detection or is just used to view video from a webcam.
-
-    - lit_subsystem_conn_dict (dict[str, typing.Union[socket.socket, bool]]): A dictonary where each key is a camera plus its index, such as 'CAMERA_0'. If the camera is part of a subsystem which 
-    is sending data over a socket connection for address LED in the Subsystem, then the value stored will be an instance of a socket connection, but if there is no connection the value will be False.
-
-    - lit_subystem_thread_lock_dict (dict[str, typing.Union[threading.Lock, bool]]): A dictonary where each key is a camera plus its index, such as 'CAMERA_0'. If there is a server connection for this
-    camera subsystem, we use an instance of the threading.Lock class for sending data, so that each unqiue connection for cameras in the GUI have the ability to send data autonomously through their respective
-    object detection models, and manually through user input in the GUI. This prevents any race conditions from occuring when sending data.
     """
 
-    led_tuples_dict_of_list: dict[str, list[tuple[int, int]]] = {}
-    object_detection_model_dict: dict[str, typing.Union[ObjectDetectionModel, None]] = {}
-    lit_subystem_conn_dict: dict[str, typing.Union[socket.socket, bool]] = {}
-    lit_subystem_thread_lock_dict: dict[str, typing.Union[threading.Lock, bool]] = {}
 
     def __init__(self, lit_subsystem_data: typing.Union[LITSubsystemData, list[LITSubsystemData]]):
         """Creates a GUI displaying Camera Feeds for each LITSubsystemData instance passed.
@@ -87,26 +30,48 @@ class LITGUI(LITGuiEventHandler):
         Parameters:
         - lit_subsystem_data (typing.Union[LITSubsystemData, list[LITSubsystemData]]): Will create a seperate section in the GUI for each subsystem passed, whether in a list of Length N, or 
         if a single instance of LITSubsystemData is passed."""
-
+        LITGuiEventHandler.__init__(self)
+        self.led_tuples_dict_of_list: dict[str, list[tuple[int, int]]] = {}
+        self.object_detection_model_dict: dict[str, typing.Union[ObjectDetectionModel, None]] = {}
+        self.lit_subsystem_dict: dict[str, LITSubsystemData] = {}
         if isinstance(lit_subsystem_data, LITSubsystemData):
             final_layout = self.create_gui_from_camera_instance(lit_subsystem_data)
-            self.window = sg.Window('Test', final_layout)
-
+            self.window = sg.Window('Test', final_layout, finalize=True)
+            self.bind_all_slider_release_events(lit_subsystem_data.camera_idx)
         elif isinstance(lit_subsystem_data, list):
             final_layout = self.create_gui_from_cameras_list(lit_subsystem_data)
-            self.window = sg.Window('Test', final_layout)
-        
+            self.window = sg.Window('Test', final_layout, finalize=True)
+            self.bind_all_slider_release_events([lit_subsystem.camera_idx for lit_subsystem in lit_subsystem_data])
         self.set_lit_subsystems_windows(lit_subsystem_data)
+        self.start_event_loop()
         return
 
+    def bind_all_slider_release_events(self, camera_idx: typing.Union[int, list[int]]):
+        """Binds a button release event to the current camera panel's brightness and led sliders. This enables control of slider release events, such as storing the value of the slider once user has finished 
+        using it, as if it is slid to fast the main loop can not keep up.
+        
+        Parameters:
+        - camera_idx (typing.Union[int, list[int]]): The camera ID used to address the current panel elements. Each panel has its own elements where the camera ID is added to make them unique."""
+
+        if isinstance(camera_idx, int):
+            self.window[f'-CAMERA_{camera_idx}_LEDSLIDER-'].bind('<ButtonRelease-1>', ' Release')
+            self.window[f'-CAMERA_{camera_idx}_BRIGHTNESSSLIDER-'].bind('<ButtonRelease-1>', ' Release')
+        elif isinstance(camera_idx, list):
+            for idx in camera_idx:
+                self.window[f'-CAMERA_{idx}_LEDSLIDER-'].bind('<ButtonRelease-1>', ' Release')
+                self.window[f'-CAMERA_{idx}_BRIGHTNESSSLIDER-'].bind('<ButtonRelease-1>', ' Release')
+        return
+            
     def set_lit_subsystems_windows(self, lit_subsystem_data: typing.Union[LITSubsystemData, list[LITSubsystemData], None, list[None]]):
         """Sets the window where each object detection model will pass data to, which will be the window created by an instance of this class.
         
+        Parameters:
         - lit_subsystem_data (typing.Union[LITSubsystemData, list[LITSubsystemData], None, list[None]]): An instance of the LITSubsystemData class, or a list containing either all LITSubsystemData 
         instances, or some LITSubsystemData instances and some Nonetype instances."""
 
         if isinstance(lit_subsystem_data, LITSubsystemData):
-            lit_subsystem_data.object_detection_model.set_window(self.window)
+            if lit_subsystem_data.object_detection_model:
+                lit_subsystem_data.object_detection_model.set_window(self.window)
         elif isinstance(lit_subsystem_data, list):
             for subsystem in lit_subsystem_data:
                 if isinstance(subsystem.object_detection_model, ObjectDetectionModel):
@@ -125,7 +90,6 @@ class LITGUI(LITGuiEventHandler):
             i += leds_ranges
         return led_tuples_list
     
-
     def add_object_detection_model_to_gui(self, object_detection_model: typing.Union[ObjectDetectionModel, None]):
         """Sets the image window where video feed will be passed from the object detection model to the GUI window. Also adds the key value pair of the camera_idx and the object model instance to the 
         object detection model dictionary
@@ -147,8 +111,9 @@ class LITGUI(LITGuiEventHandler):
         self.camera_idx = lit_subsystem_data.camera_idx
         self.number_of_leds = lit_subsystem_data.number_of_leds
         self.num_of_sections = lit_subsystem_data.number_of_sections
-        self.lit_subystem_conn_dict[f'CAMERA_{self.camera_idx}'] = lit_subsystem_data.client_conn
-        self.lit_subystem_thread_lock_dict[f'CAMERA_{self.camera_idx}'] = lit_subsystem_data.send_lock
+        self.gui_image_preview_width = lit_subsystem_data.image_preview_width
+        self.gui_image_preview_height = lit_subsystem_data.image_preview_height
+        self.lit_subsystem_dict[f'CAMERA_{self.camera_idx}'] = lit_subsystem_data
         self.add_object_detection_model_to_gui(lit_subsystem_data.object_detection_model)
         led_tuples_list = self.create_led_tuple_range_list()
         self.led_tuples_dict_of_list[f"CAMERA_{self.camera_idx}"] =led_tuples_list
@@ -166,15 +131,18 @@ class LITGUI(LITGuiEventHandler):
     def create_image_preview_section(self):
         """Creates the image element for the current Subsystem Frame being created. This is video feed will be displayed."""
         if self.camera_idx == 0:
-            camera_preview = [sg.Image(filename=r'Jason.png', key=f'-CAMERA_{self.camera_idx}_FEED-', size=(720, 480))] 
+            camera_preview = [sg.Image(filename=r'C:\Users\00239148\PythonProjects\LITProject\Jason.png',
+                                        key=f'-CAMERA_{self.camera_idx}_FEED-', size=(self.gui_image_preview_width, self.gui_image_preview_height))] 
         else:
-            camera_preview = [sg.Image(filename=r'Lebron.png', key=f'-CAMERA_{self.camera_idx}_FEED-', size=(720, 480))]
+            camera_preview = [sg.Image(filename=r'C:\Users\00239148\PythonProjects\LITProject\Lebron.png', 
+                                       key=f'-CAMERA_{self.camera_idx}_FEED-', size=(self.gui_image_preview_width, self.gui_image_preview_height))]
 
         return camera_preview
 
     def create_enable_controls_row(self)->list[sg.Checkbox]:
-        """Creates the main controls row, which contains the checkboxes for enabling manual control of the LED subsystem, Autonomous Mode, and showing the camera feed."""
+        """Creates the main controls row, which contains the checkboxes for enabling manual control of the LED subsystem, Turning all LEDs on, Autonomous Mode, and showing the camera feed."""
         control_buttons_row = [sg.Checkbox(f"Manually Control LIT Subsystem {self.camera_idx}", size=(23,1), key=f'-CAMERA_{self.camera_idx}_MANUALSTATUS-', enable_events=True), 
+                               sg.Checkbox(f"Turn On All LEDs", size=(15,1), key=f'-CAMERA_{self.camera_idx}_TURNONALLLEDs-', enable_events=True, disabled=True),
                                 sg.Checkbox(f"Autonomous Mode", size=(13,1), key=f'-CAMERA_{self.camera_idx}_AUTONOMOUSMODE-', enable_events=True), 
                                 sg.Checkbox(f"Show Camera Feed", size=(15,1), key=f'-CAMERA_{self.camera_idx}_SHOWFEED-', enable_events=True, disabled=True)]
         
@@ -182,10 +150,16 @@ class LITGUI(LITGuiEventHandler):
 
     def create_control_led_range_frame(self)->sg.Frame:
         """Creates the Frame containing checkboxes for manually controlling sections of the LED Subsystem with checkboxes which each refer to a specific section."""
-        leds_range_option_inside_frame = [[sg.Checkbox(f"({led_range[0]}, {led_range[1]})",  size=((len(str(led_range[0]))+1+len(str(led_range[1]))),1),\
-                                                        key=f'-CAMERA_{self.camera_idx}_LEDRANGE_{led_range[0]}_{led_range[1]}-', enable_events=True, disabled=True) \
-                                                            for led_range in self.led_tuples_dict_of_list[f'CAMERA_{self.camera_idx}']]]
-        leds_range_option_with_frame = sg.Frame('Manually Control LED Ranges', leds_range_option_inside_frame)
+        leds_range_option_in_frame = []
+        for led_range in self.led_tuples_dict_of_list[f'CAMERA_{self.camera_idx}']:
+            
+            leds_range_option_in_frame.append(sg.Checkbox(f"({led_range[0]}, {led_range[1]})",  size=((len(str(led_range[0]))+1+len(str(led_range[1]))),1), \
+                                                  key=f'-CAMERA_{self.camera_idx}_LEDRANGE_{led_range[0]}_{led_range[1]}-', enable_events=True, disabled=True))
+            
+        total_text_len = sum([len(str(led_range[0]))+1+len(str(led_range[1])) for led_range in self.led_tuples_dict_of_list[f'CAMERA_{self.camera_idx}']])
+        number_of_checkboxes_per_row = math.ceil(self.gui_image_preview_width / total_text_len) 
+        leds_range_option_in_frame = list(split(leds_range_option_in_frame, number_of_checkboxes_per_row))
+        leds_range_option_with_frame = sg.Frame('Manually Control LED Ranges', leds_range_option_in_frame, expand_x=True)
 
         return leds_range_option_with_frame
 
@@ -209,12 +183,12 @@ class LITGUI(LITGuiEventHandler):
 
     def create_controller_options_section_wrapped_in_frame(self, layout_list: list)->sg.Frame:
         """Creates a Frame around the Current Subsystem Control Settings being created in the GUI. Used to seperate Subsystem Control Settings from the Camera feed."""
-        return sg.Frame(f'Camera {self.camera_idx} Subsystem Controller', layout_list)
+        return sg.Frame(f'Camera {self.camera_idx} Subsystem Controller', layout_list, expand_x=True)
 
     def create_final_subsystem_section_layout_wrapped_in_frame(self, image_preview_section, controller_options_section_layout)->sg.Frame:
         """Creates a Frame around the Current Subsystem Panel being created. Used to seperate Subsystems from one another in the GUI."""
         final_layout = [image_preview_section, [controller_options_section_layout]]
-        return sg.Frame(f'Camera {self.camera_idx} Subsystem', final_layout)
+        return sg.Frame(f'Camera {self.camera_idx} Subsystem', final_layout, expand_y=True)
 
     def create_gui_from_cameras_list(self, lit_subsystem_data: list[LITSubsystemData])->list[list[sg.Frame]]:
         """Creates all of the Subsystem Frames which are displayed in the Gui. This is passed to the sg.Window class to create the final GUI."""
@@ -224,16 +198,50 @@ class LITGUI(LITGuiEventHandler):
         """Creates a LITSubsystem Frame which is displayed in the GUI. Called when user provides only one LITSubsystem data instance to the constructor."""
         return [[self.create_camera_frame(lit_subsystem_data)]]
 
+def run_gui_process(lit_subsystem_data: LITSubsystemData, object_detect_status: bool, model_path: str='', label_path: str='', camera_idx: int = 0, use_tpu: bool = False):
+    if object_detect_status:
+        from tensorflow.lite.python.interpreter import Interpreter 
+        from tensorflow.lite.python.interpreter import load_delegate
+        object_detection_model = ObjectDetectionModel(model_path=model_path, use_edge_tpu=use_tpu, camera_index=camera_idx, label_path=label_path)
+        lit_subsystem_data.set_object_detection_model(object_detection_model)
+    gui = LITGUI(lit_subsystem_data)
+    return
+
+def start_gui(lit_subsystem_data: LITSubsystemData, object_detect_status: bool, model_path: str='', label_path: str='', camera_idx: int = 0, use_tpu: bool = False):
+    p = multiprocessing.Process(target=run_gui_process, args=(lit_subsystem_data,object_detect_status, model_path, label_path, camera_idx, use_tpu))
+    p.start()
+    return p 
+
+def set_command_line_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--performance_mode", help="Run subsystems in parallel", action="store_true")
+    args = parser.parse_args()
+    if args.performance_mode:
+        return True
+    return False
+
+def split(list_a, chunk_size):
+
+  for i in range(0, len(list_a), chunk_size):
+    yield list_a[i:i + chunk_size]
     
-
 if __name__ == '__main__':
-    obj_detector_one = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
-                                        r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
-    # obj_detector_two = ObjectDetectionModel(r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/detect.tflite', False, 2, 
-    #                                     r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/labelmap.txt')
-    subsystem_one = LITSubsystemData(0, obj_detector_one, host='192.168.0.220', port=5000)
-    subsystem_two = LITSubsystemData(1, obj_detector_one, host='192.168.0.220', port=5001)
-
+    # obj_detector_one = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
+    #                                     r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
+    # obj_detector_two = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, -1, 
+    #                                     r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
+    performance_status = set_command_line_arguments()
+    model_path = r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite'
+    label_path = r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt'
+    host='192.168.0.220'
+    ports = [5000, 5001]
+    subsystem_one = LITSubsystemData(0, number_of_leds=256, number_of_sections=8)
+    subsystem_two = LITSubsystemData(1,number_of_leds=256, number_of_sections=8)
     subsystem_list = [subsystem_one, subsystem_two]
-    lit_gui = LITGUI(subsystem_list)
-    lit_gui.start_event_loop()
+    if performance_status:
+        process1 = start_gui(subsystem_one, False, model_path, label_path, 0, False)
+        process2 = start_gui(subsystem_two, False, model_path, label_path, 1, False)
+        process1.join()
+        process2.join()
+    else:
+        lit_gui = LITGUI(subsystem_list)
