@@ -7,9 +7,9 @@ import time
 import pickle
 import socket
 import PySimpleGUI as sg    
+from utils import AutoLEDData
 from tensorflow.lite.python.interpreter import Interpreter 
 from tensorflow.lite.python.interpreter import load_delegate
-
 try:
     from tflite_runtime.interpreter import Interpreter
     from tflite_runtime.interpreter import load_delegate
@@ -19,61 +19,38 @@ except:
 import typing
 from multiprocessing import Process, Queue
 
-def find_missing_numbers_as_ranges_tuples(ranges) -> list[tuple]:
-    # Initialize a set with all numbers from 0 to 256
-    all_numbers = set(range(257))
-    
-    # Remove the numbers present in the given ranges
-    for start, end in ranges:
-        all_numbers -= set(range(start, end + 1))
-    
-    # Convert the set to a sorted list
-    missing_numbers_sorted = sorted(list(all_numbers))
-    
-    # Group the consecutive numbers into ranges
-    missing_ranges = []
-    if missing_numbers_sorted:
-        # Initialize the first range with the first missing number
-        range_start = missing_numbers_sorted[0]
-        range_end = missing_numbers_sorted[0]
-        
-        for number in missing_numbers_sorted[1:]:
-            if number == range_end + 1:
-                # Extend the current range
-                range_end = number
-            else:
-                # Finish the current range and start a new one
-                missing_ranges.append((range_start, range_end))
-                range_start = number
-                range_end = number
-        
-        # Add the last range
-        missing_ranges.append((range_start, range_end))
-    
-    return missing_ranges
 
-def send_data_for_led_addressing(curr_led_tuple_list: typing.Union[list[tuple], None], current_led_list_of_dicts: typing.Union[list[dict[str, float], dict[str, tuple[int, int]]], None], client_conn: socket.socket, thread_lock: socket.socket = None):
-    """Sends data to the respective LED subsystem associated with the instance of this ObjectDetectionModel using a socket connection. This is used to update the state of LEDs throughout the subsystem.
+def create_fov_range_list(hfov: int, num_of_sections: int)->typing.Union[list[float], list[int]]:
+    """Returns a list of float or integer values equally spaced apart by setting the hfov arguement into 2 seperate values, which are the the positive and negative states of the number divided by two.
+    Then these two numbers are used to create a list of size 'num_of_sections' where the number at index 0 is the negative state and the number at the last index is the positive state. All numbers in the equal distance apart,
+    by an amount equal to hfov / num_of_sections.
     
     Parameters:
-    - curr_led_tuple_list (typing.Union[list[tuple], None]): A list of all the LED ranges the user would like to turn on.
-    - current_led_list_of_dicts (typing.Union[list[dict[str, float], dict[str, tuple[int, int]]]): A list of dictonaries containing all LED ranges the user would like to turn on, and the brightness each range should be turn on at.
-    - client_conn (socket.socket): An instance of a socket connection where LED Data is passed to update the LEDs of the subsystem.
-    - thread_lock (socket.socket): An instance of a thread lock used to ensure thread safety if this program involved sending data to the same port with multiple threads."""
+    - hfov (int): The horizontal field of view of a camera.
+    - num_of_sections (int): The desired length of the list containing equally spaced numbers ranging from the negative value of hfov/2 to the postive value of hfov/2."""
 
-    if not curr_led_tuple_list:
-        missing_ranges = [(0,255)]
-    else:
-        missing_ranges = find_missing_numbers_as_ranges_tuples(curr_led_tuple_list)
+    max_positive_fov = round(hfov / 2)
+    max_negative_fov = -1 * max_positive_fov
+    lst = [max_negative_fov + x * (max_positive_fov - max_negative_fov) / num_of_sections for x in range(num_of_sections + 1)]
+    lst.sort(reverse=True)
+    return lst
 
-    data = ['AUTO_LED_DATA', current_led_list_of_dicts, missing_ranges]
-    pickle_data = pickle.dumps(data)
-    if thread_lock:
-        with thread_lock:
-            client_conn.send(pickle_data)
-    else:
-        client_conn.send(pickle_data)        
-    return
+def create_led_tuple_range_list(number_of_leds: int, num_of_sections: int)->list[tuple[int, int]]:
+    """Returns a list of tuples containing the start and stopping point of LED ranges based on the number of LEDs of the subsystem specified divided by the number of sections the user would 
+    like the subsystem divided into.
+    
+    Parameters:
+    - number_of_leds (int): The number of LEDs used in a panel. If two panels are used horizontally, the double the amount of LEDs.
+    - num_of_sections (int): The amount of equally spaced ranges you would like to split the number of LEDs into.
+    """
+
+    led_tuples_list = []
+    leds_ranges = round(number_of_leds/num_of_sections)
+    i = 0
+    while i < number_of_leds:
+        led_tuples_list.append((i, i+leds_ranges))
+        i += leds_ranges
+    return led_tuples_list
 
 def brightness_based_on_distance(distance: int)->float:
     """Returns a brightness percetange based from 0.00 to 1.00:
@@ -97,27 +74,19 @@ def brightness_based_on_distance(distance: int)->float:
     else:
         return 1.00
 
-def determine_leds_range_for_angle(angle_x: float)->tuple:
-    """Returns the LEDs to turn on based on the angle of the object provided.
+def determine_leds_range_for_angle(angle_x: typing.Union[float, int], led_sections: list[tuple[int, int]], hfov_range_list: typing.Union[list[float], list[int]])->typing.Union[tuple, None]:
+    """Returns the LEDs to turn on based on the angle of the object provided. This function finds the range this angle lies in based on the list of HFOV ranges, and returns the respective led section from the led_sections list.
     
     Parameters:
-    angle_x (float): The angle of the object detected respective to the camera of the subsystem."""
-    if angle_x <= 39 and angle_x > 28.25:
-        return 0, 32
-    elif angle_x <= 28.25 and angle_x > 19.75:
-        return 32, 64
-    elif angle_x <= 19.75 and angle_x > 10.00:
-        return 64, 96
-    elif angle_x <= 10.00 and angle_x > 0:
-        return 96, 128
-    elif angle_x >= -9.75 and angle_x < 0:
-        return 128, 160
-    elif angle_x >= -19.5 and angle_x < -9.75:
-        return 192, 224
-    elif angle_x >= -29.25 and angle_x < -19.5:
-        return 224, 256
-    else:
-        None
+    - angle_x (float): The angle of the object detected respective to the camera of the subsystem.
+    - led_sections (list[tuple[int, int]]): The list of the seperate sections used to each illuminate an object detected.
+    - hfov_range_list (list[float]): The list of hfov regions that correlate to each are of leds to illuminate."""
+    i = 0
+    while i < len(hfov_range_list)-1:
+        if angle_x <= hfov_range_list[i] and angle_x >= hfov_range_list[i+1]:
+            return led_sections[i]
+        i+=1
+    return None
 
 def estimate_distance(found_width: float, focal_length: float, known_width: float):
     """Estimate the distance of an object based on the width found for the object.
@@ -161,7 +130,7 @@ class DetectObj:
         
 class VideoStream:
     """Camera object that controls video streaming"""
-    def __init__(self, camera_index: int, resolution: tuple[int, int] =(640,480), framerate: int = 30, focal_length: float = 1080.1875, hfov: int = 78, vfov: int = 49):
+    def __init__(self, camera_index: int, resolution: tuple[int, int] =(720,480), framerate: int = 30, focal_length: float = 1080.1875, hfov: int = 78, vfov: int = 49):
         """Creates an Object for that interfaces with the selected camera and stores data from the live feed in real time.
         Data is stored and the dropped as feed is updated.
         
@@ -221,10 +190,10 @@ class ObjectDetectionModel:
     input_mean: float = 127.5
     input_std: float = 127.5
     frame_rate_calc: int = 1
-    
+
     def __init__(self, model_path: str, use_edge_tpu: bool, camera_index: int, label_path: str, 
                  min_conf_threshold: float= 0.5,window: typing.Union[sg.Window, None]=None, image_window_name: typing.Union[str, None]=None, 
-                 client_conn: socket.socket = None, thread_lock: threading.Lock = None, ref_person_width: int = 20) -> None:
+                 client_conn: socket.socket = None, thread_lock: threading.Lock = None, ref_person_width: int = 20, hfov: int = 78, vfov:int = 48, resolution: tuple[int, int] =(720,480), focal_length: float = 1080.1875) -> None:
         """Creates an Object for performing object detection on a camera feed. Uses either an EdgeTPU or CPU to perform computations.
         
         Parameters:
@@ -249,7 +218,19 @@ class ObjectDetectionModel:
         self.set_boxes_clases_and_scores_idxs()
         self.detection_thread = None
         self.detection_active = threading.Event()
+        self.current_led_list_of_dicts: list[dict] = []
+        self.curr_auto_led_data_list: list[tuple] = []
+        self.led_sections: list[tuple[int, int]]
+        self.hfov = hfov
+        self.vfov = vfov
+        self.resolution = resolution
+        self.focal_length = focal_length
 
+    def set_led_ranges_for_objects(self, number_of_leds: int, number_of_sections: int):
+        self.led_sections = create_led_tuple_range_list(number_of_leds, number_of_sections)
+        self.number_of_sections = number_of_sections
+        return
+    
     def set_client_conn(self, client_conn: socket.socket):
         """Set the client conn attribute."""
         self.client_conn = client_conn
@@ -270,6 +251,9 @@ class ObjectDetectionModel:
         self.image_window_name = image_window
         return
     
+    def set_send_data_callback(self, callback):
+        self.send_data_callback = callback
+        return
 
     def start_detection(self):
         """Verifies that the current instance of this class does not already have a thread running that spawned from this method, and then initializes a new instance of the VideoStream class with the camera associated with the current instance of this class.
@@ -278,7 +262,9 @@ class ObjectDetectionModel:
         This leads to the creation of a new thread performing object detection, and the initialize of an attribute that has control of that thread."""
         if self.detection_thread is None or not self.detection_thread.is_alive():
             self.detection_active.set()  # Signal that detection should be active
-            self.video_stream = VideoStream(self.camera_index)  # Recreate VideoStream to ensure it's fresh
+            self.video_stream = VideoStream(self.camera_index, resolution=self.resolution, hfov=self.hfov, vfov = self.vfov, focal_length=self.focal_length)  # Recreate VideoStream to ensure it's fresh
+            if self.client_conn or True:
+                self.fov_sections = create_fov_range_list(self.video_stream.hfov, self.number_of_sections)
             self.detection_thread = threading.Thread(target=self.main_detection_loop, daemon=True)
             self.detection_thread.start()
         return
@@ -291,8 +277,6 @@ class ObjectDetectionModel:
         if self.video_stream:
             self.video_stream.stop() 
         time.sleep(3)
-        if self.client_conn:
-            send_data_for_led_addressing(None, None,self.client_conn, self.thread_lock)
         return
     
 
@@ -324,30 +308,30 @@ class ObjectDetectionModel:
 
         if self.video_stream.stopped:
             return
-        current_led_list_of_dicts = []
-        curr_led_tuple_list = []
+        curr_auto_led_data_list = []
         for i in range(len(scores)):
             if ((scores[i] > self.min_conf_threshold) and (scores[i] <= 1.0)):      
 
-                curr_led_dict = {}
                 self.get_and_set_current_box_vertices(boxes[i])
                 self.draw_rectangle_around_current_box()
                 self.set_label_on_obj_in_frame(classes[i], scores[i])
                 self.set_mid_point_current_obj()
                 self.set_width_of_current_obj()
-                distance = estimate_distance(self.current_obj_width, self.video_stream.focal_length, self.ref_person_width)
-                angle_x = calculate_horz_angle(self.current_obj_mid_point_x, self.video_stream.video_width, self.video_stream.hfov)
-                angle_y = calculate_vert_angle(self.current_obj_mid_point_y, self.video_stream.video_heigth, self.video_stream.hfov)
-                brightness = brightness_based_on_distance(distance)
-                led_tuple = determine_leds_range_for_angle(angle_x)
-                curr_led_dict = {'brightness': brightness,
-                                 'led_tuple': led_tuple}
-                current_led_list_of_dicts.append(curr_led_dict)
-                curr_led_tuple_list.append(led_tuple)
-
+                try:
+                    if self.led_sections:
+                        distance = estimate_distance(self.current_obj_width, self.video_stream.focal_length, self.ref_person_width)
+                        angle_x = calculate_horz_angle(self.current_obj_mid_point_x, self.video_stream.video_width, self.video_stream.hfov)
+                        angle_y = calculate_vert_angle(self.current_obj_mid_point_y, self.video_stream.video_heigth, self.video_stream.hfov)
+                        brightness = brightness_based_on_distance(distance)
+                        led_tuple = determine_leds_range_for_angle(angle_x=angle_x, led_sections=self.led_sections, hfov_range_list=self.fov_sections)
+                        curr_led_data = AutoLEDData(led_tuple, brightness)
+                        curr_auto_led_data_list.append(curr_led_data)
+                except:
+                    pass
         try:
-            if self.client_conn:
-                send_data_for_led_addressing(curr_led_tuple_list, current_led_list_of_dicts, self.client_conn, self.thread_lock)
+            if self.client_conn or True:
+                self.system_led_data.auto_led_data_list = curr_auto_led_data_list  
+                self.send_data_callback(False)
         except:
             pass
         # cv2.putText(self.frame,'FPS: {0:.2f}'.format(self.frame_rate_calc),(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,0),2,cv2.LINE_AA) #can prolly just delete will test.
@@ -359,7 +343,20 @@ class ObjectDetectionModel:
             except:
                 pass
         else:
-            print(distance)
+            pass
+
+        # image = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
+        # viz_utils.visualize_boxes_and_labels_on_image_array(
+        # image,
+        # boxes,
+        # scores,
+        # classes,
+        # category_index,
+        # use_normalized_coordinates=True,
+        # max_boxes_to_draw=200,
+        # min_score_thresh=.30,
+        # agnostic_mode=False)
+
         t2 = cv2.getTickCount()
         time1 = (t2-self.t1)/self.freq
         self.frame_rate_calc= 1/time1
@@ -495,7 +492,7 @@ class ObjectDetectionModel:
         # Load the TensorFlow Lite model with Edge TPU support.
         interpreter = Interpreter(
             model_path=model_path,
-            experimental_delegates=[load_delegate('edgetpu.dll', options={"device": "usb:0"})]
+            experimental_delegates=[load_delegate('edgetpu.dll')]
         )        
         return interpreter
 
@@ -597,17 +594,7 @@ if __name__ == '__main__':
     host = '192.168.1.2'
     port = 5000
     model_path = r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite'
-    label_path = r'/home/clawizm/Desktop/LITProject/tflite1/Sample_TFLite_model/labelmap.txt'
-    first_model = ObjectDetectionModel(host, port, model_path, False, -1, label_path)
-    port = 5001
-    second_model = ObjectDetectionModel(host, port, model_path, False, -1, label_path)
-    processes = []
-    for camera_id in [0,1]:  # Adjust camera IDs as needed
-        port = 5000 + camera_id  # Example: camera 0 uses port 5000, camera 1 uses port 5001
-        p = Process(target=ObjectDetectionModel.start_detection)
-        p.start()
-        processes.append(p)
-
-    # Wait for all processes to complete
-    for p in processes:
-        p.join()
+    label_path = r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt'
+    obj_detector_one = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
+                                        r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
+    obj_detector_one.start_detection()
