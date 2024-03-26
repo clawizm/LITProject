@@ -1,6 +1,6 @@
 import typing
 import itertools
-
+import math
 class ManualLEDData:
     """Stores all user entered manual LED Data, where all led ranges stored in this class share single brightness"""
     def __init__(self, brightness: float = 0.00):
@@ -183,7 +183,10 @@ def adjust_overlap(range1, range2):
     # No overlap
     return range1
 
-
+def focal_length_finder(camera_video_width: int, horizontal_fov: int)->float:
+    """Using the width of the video from the camera in pixels and the horizontal field of view of the camera, both in pixels, this functuion returns the focal length in pixels of the camera."""
+    fov_rad = math.radians(horizontal_fov)
+    return camera_video_width / (2 * math.tan(fov_rad / 2))
 
 if __name__ == '__main__':
     manual_led_data = ManualLEDData()

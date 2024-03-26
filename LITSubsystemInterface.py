@@ -13,7 +13,7 @@ class LITSubsystemData():
     """A data structure used to store information relevant between the GUI, ObjectDetectionModel used for performing Object Detection on the camera specified, and the potential server the user 
     would like data sent to for addressing the LED subsystems."""
     def __init__(self, camera_idx: int, object_detection_model: typing.Union[ObjectDetectionModel, None] = None, number_of_leds: int = 256,
-                 number_of_sections: int = 8, host: str = None, port: int = None, image_preview_height: int = 480, image_preview_width:int = 720) -> None:
+                 number_of_sections: int = 8, host: str = None, port: int = None, image_preview_height: int = 480, image_preview_width:int = 640) -> None:
         """
         Parameters:
         - camera_idx (int): The USB ID number for the camera of this Subsystem. This is how the device is identified by the OS.
@@ -35,18 +35,24 @@ class LITSubsystemData():
         self.manual_status: bool = False
         self.auto_status: bool = False
         self.force_all_leds_on: bool = False 
-        if self.object_detection_model:
-            self.object_detection_model.set_send_data_callback(self.send_data_for_led_addressing)
-            self.object_detection_model.set_led_ranges_for_objects(number_of_leds=number_of_leds, number_of_sections=number_of_sections)
-            self.object_detection_model.system_led_data = self.system_led_data
-            self.image_preview_width = self.object_detection_model.resolution[0]
-            self.image_preview_height = self.object_detection_model.resolution[1]
+        self.attempt_to_create_client_conn()
+        if isinstance(self.object_detection_model, ObjectDetectionModel):
+            self.set_object_detection_model(self.object_detection_model)
         else:
             self.image_preview_height = image_preview_height
             self.image_preview_width = image_preview_width
-            
-        self.attempt_to_create_client_conn()
-
+    def set_object_detection_model(self, object_detection_model: ObjectDetectionModel):
+        if isinstance(object_detection_model, ObjectDetectionModel):
+            self.object_detection_model = object_detection_model
+            self.object_detection_model.set_send_data_callback(self.send_data_for_led_addressing)
+            self.object_detection_model.set_led_ranges_for_objects(number_of_leds=self.number_of_leds, number_of_sections=self.number_of_sections)
+            self.object_detection_model.system_led_data = self.system_led_data
+            self.image_preview_width = self.object_detection_model.resolution[0]
+            self.image_preview_height = self.object_detection_model.resolution[1]    
+            if self.client_conn:
+                self.object_detection_model.client_conn = self.client_conn    
+                self.object_detection_model.thread_lock = self.send_lock  
+        return
     def attempt_to_create_client_conn(self):
         """Called in the constructor, used to create a connection to the server if provided a host and port. This connection is unique to each instance, as well as the lock creatred when connecting.
         This connection and thread lock is also passed to the object detection model if provide in the constructor. If the server and port are not present, the client_conn and send_lock
@@ -98,14 +104,14 @@ class LITSubsystemData():
         else:
             data = [0, [], 0, [(0,self.number_of_leds)]]
 
-        print(data)
-        
         pickle_data = pickle.dumps(data)
         if self.send_lock:
             with self.send_lock:
                 self.client_conn.send(pickle_data)
+                print('Data send')
         elif self.client_conn:
-            self.client_conn.send(pickle_data)        
+            self.client_conn.send(pickle_data)      
+            print('Data sent') 
         return
     
 

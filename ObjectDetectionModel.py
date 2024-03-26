@@ -52,27 +52,29 @@ def create_led_tuple_range_list(number_of_leds: int, num_of_sections: int)->list
         i += leds_ranges
     return led_tuples_list
 
-def brightness_based_on_distance(distance: int)->float:
-    """Returns a brightness percetange based from 0.00 to 1.00:
-
-    Parameters:
-    - distance (int): (in cm) The distance the human is away from the camera"""
-    if distance < 50:
-        return .01
-    elif distance < 100:
-        return .05
-    elif distance < 150:
-        return .1
-    elif distance < 200:
-        return .2
-    elif distance < 250:
-        return .3
-    elif distance < 300:
-        return .5
-    elif distance < 350:
-        return .7
+def brightness_based_on_distance(distance, minDist=0.01, maxDist=5.0, linear_slope=0.25, exponential_base=2):
+    """Distance is in meters, so please provide meters"""
+    if distance <= minDist:
+        return 0  # Assuming you want very little brightness at close proximity.
+    elif distance >= maxDist:
+        return 1  # Maximum brightness at the max distance or beyond.
+    
+    # Define the threshold as halfway through the max distance.
+    threshold = maxDist / 2
+    
+    if distance <= threshold:
+        # Linear increase with a customizable slope from minDist to threshold.
+        # Brightness increases linearly based on the distance and slope.
+        linear_brightness = (distance - minDist) / (threshold - minDist) * linear_slope * 100
+        # Ensuring that the linear phase does not exceed the intended maximum at the threshold.
+        return (min(linear_brightness, linear_slope * 100) / 100)
     else:
-        return 1.00
+        # Exponential increase from the end of the linear phase to 100% from threshold to maxDist.
+        # Normalize distance to range [0,1] for exponential calculation.
+        normalized_dist = (distance - threshold) / (maxDist - threshold)
+        # Calculate exponential increase with a base that can be adjusted.
+        exponential_brightness = 100 * linear_slope + (100 * (1 - linear_slope) * (normalized_dist ** exponential_base))
+        return (exponential_brightness / 100)
 
 def determine_leds_range_for_angle(angle_x: typing.Union[float, int], led_sections: list[tuple[int, int]], hfov_range_list: typing.Union[list[float], list[int]])->typing.Union[tuple, None]:
     """Returns the LEDs to turn on based on the angle of the object provided. This function finds the range this angle lies in based on the list of HFOV ranges, and returns the respective led section from the led_sections list.
@@ -130,7 +132,7 @@ class DetectObj:
         
 class VideoStream:
     """Camera object that controls video streaming"""
-    def __init__(self, camera_index: int, resolution: tuple[int, int] =(720,480), framerate: int = 30, focal_length: float = 1080.1875, hfov: int = 78, vfov: int = 49):
+    def __init__(self, camera_index: int, resolution: tuple[int, int] =(640,480), framerate: int = 30, focal_length: float = 1080.1875, hfov: int = 78, vfov: int = 49):
         """Creates an Object for that interfaces with the selected camera and stores data from the live feed in real time.
         Data is stored and the dropped as feed is updated.
         
@@ -193,7 +195,7 @@ class ObjectDetectionModel:
 
     def __init__(self, model_path: str, use_edge_tpu: bool, camera_index: int, label_path: str, 
                  min_conf_threshold: float= 0.5,window: typing.Union[sg.Window, None]=None, image_window_name: typing.Union[str, None]=None, 
-                 client_conn: socket.socket = None, thread_lock: threading.Lock = None, ref_person_width: int = 20, hfov: int = 78, vfov:int = 48, resolution: tuple[int, int] =(720,480), focal_length: float = 1080.1875) -> None:
+                 client_conn: socket.socket = None, thread_lock: threading.Lock = None, ref_person_width: int = 20, hfov: int = 100, vfov:int = 78, resolution: tuple[int, int] =(640,480), focal_length: float = 302.0758) -> None:
         """Creates an Object for performing object detection on a camera feed. Uses either an EdgeTPU or CPU to perform computations.
         
         Parameters:
@@ -263,8 +265,7 @@ class ObjectDetectionModel:
         if self.detection_thread is None or not self.detection_thread.is_alive():
             self.detection_active.set()  # Signal that detection should be active
             self.video_stream = VideoStream(self.camera_index, resolution=self.resolution, hfov=self.hfov, vfov = self.vfov, focal_length=self.focal_length)  # Recreate VideoStream to ensure it's fresh
-            if self.client_conn or True:
-                self.fov_sections = create_fov_range_list(self.video_stream.hfov, self.number_of_sections)
+            self.fov_sections = create_fov_range_list(self.video_stream.hfov, self.number_of_sections)
             self.detection_thread = threading.Thread(target=self.main_detection_loop, daemon=True)
             self.detection_thread.start()
         return
@@ -310,13 +311,16 @@ class ObjectDetectionModel:
             return
         curr_auto_led_data_list = []
         for i in range(len(scores)):
-            if ((scores[i] > self.min_conf_threshold) and (scores[i] <= 1.0)):      
+            try: #get rid of non humna
+                if ((scores[i] > self.min_conf_threshold) and (scores[i] <= 1.0)):      
 
-                self.get_and_set_current_box_vertices(boxes[i])
-                self.draw_rectangle_around_current_box()
-                self.set_label_on_obj_in_frame(classes[i], scores[i])
-                self.set_mid_point_current_obj()
-                self.set_width_of_current_obj()
+                    self.get_and_set_current_box_vertices(boxes[i])
+                    self.draw_rectangle_around_current_box()
+                    self.set_label_on_obj_in_frame(classes[i], scores[i])
+                    self.set_mid_point_current_obj()
+                    self.set_width_of_current_obj()
+            except:
+                pass
                 try:
                     if self.led_sections:
                         distance = estimate_distance(self.current_obj_width, self.video_stream.focal_length, self.ref_person_width)
@@ -329,7 +333,7 @@ class ObjectDetectionModel:
                 except:
                     pass
         try:
-            if self.client_conn or True:
+            if self.client_conn:
                 self.system_led_data.auto_led_data_list = curr_auto_led_data_list  
                 self.send_data_callback(False)
         except:
@@ -339,24 +343,12 @@ class ObjectDetectionModel:
             try:
                 cv2.putText(self.frame,'FPS: {0:.2f}'.format(self.frame_rate_calc),(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,0),2,cv2.LINE_AA)
                 image_bytes = cv2.imencode('.png', self.frame)[1].tobytes()
-                self.gui_window[self.image_window_name].update(data=image_bytes)
+                self.gui_window.write_event_value(f"UPDATE_{self.camera_index}_FRAMES", image_bytes)
+                # self.gui_window[self.image_window_name].update(data=image_bytes)
             except:
-                pass
+                print('Brandon')
         else:
-            pass
-
-        # image = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
-        # viz_utils.visualize_boxes_and_labels_on_image_array(
-        # image,
-        # boxes,
-        # scores,
-        # classes,
-        # category_index,
-        # use_normalized_coordinates=True,
-        # max_boxes_to_draw=200,
-        # min_score_thresh=.30,
-        # agnostic_mode=False)
-
+            print('No Gui Window')
         t2 = cv2.getTickCount()
         time1 = (t2-self.t1)/self.freq
         self.frame_rate_calc= 1/time1
