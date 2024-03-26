@@ -104,6 +104,8 @@ class LITSubsystemData():
         else:
             data = [0, [], 0, [(0,self.number_of_leds)]]
 
+        print(data)
+        
         pickle_data = pickle.dumps(data)
         if self.send_lock:
             with self.send_lock:

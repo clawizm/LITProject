@@ -8,8 +8,6 @@ import threading
 import socket
 import pickle
 from LITSubsystemInterface import LITSubsystemData
-import multiprocessing
-import argparse
 import math
 # used to prevent popup froms occur while debugging and poential errors that are inevitable but caught with try and excepts from also creating annoying popups
 sg.set_options(suppress_raise_key_errors=True, suppress_error_popups=True, suppress_key_guessing=True)
@@ -36,11 +34,11 @@ class LITGUI(LITGuiEventHandler):
         self.lit_subsystem_dict: dict[str, LITSubsystemData] = {}
         if isinstance(lit_subsystem_data, LITSubsystemData):
             final_layout = self.create_gui_from_camera_instance(lit_subsystem_data)
-            self.window = sg.Window('Test', final_layout, finalize=True, resizable=False, size=(1920, 1080))
+            self.window = sg.Window('Test', final_layout, finalize=True, resizable=False)
             self.bind_all_slider_release_events(lit_subsystem_data.camera_idx)
         elif isinstance(lit_subsystem_data, list):
             final_layout = self.create_gui_from_cameras_list(lit_subsystem_data)
-            self.window = sg.Window('Test', final_layout, finalize=True, resizable=False, size=(1920, 1080))
+            self.window = sg.Window('Test', final_layout, finalize=True, resizable=False)
             self.bind_all_slider_release_events([lit_subsystem.camera_idx for lit_subsystem in lit_subsystem_data])
         self.set_lit_subsystems_windows(lit_subsystem_data)
         return
@@ -130,10 +128,10 @@ class LITGUI(LITGuiEventHandler):
     def create_image_preview_section(self):
         """Creates the image element for the current Subsystem Frame being created. This is video feed will be displayed."""
         if self.camera_idx == 0:
-            camera_preview = [sg.Image(filename=r'c:\Users\brand\Documents\seniordesign\LITProject-NewApproach\Jason.png',
+            camera_preview = [sg.Image(filename=r'C:\Users\00239148\PythonProjects\LITProject\Jason.png',
                                         key=f'-CAMERA_{self.camera_idx}_FEED-', size=(self.gui_image_preview_width, self.gui_image_preview_height))] 
         else:
-            camera_preview = [sg.Image(filename=r'c:\Users\brand\Documents\seniordesign\LITProject-NewApproach\Lebron.png', 
+            camera_preview = [sg.Image(filename=r'C:\Users\00239148\PythonProjects\LITProject\Lebron.png', 
                                        key=f'-CAMERA_{self.camera_idx}_FEED-', size=(self.gui_image_preview_width, self.gui_image_preview_height))]
 
         return camera_preview
@@ -197,58 +195,11 @@ class LITGUI(LITGuiEventHandler):
         """Creates a LITSubsystem Frame which is displayed in the GUI. Called when user provides only one LITSubsystem data instance to the constructor."""
         return [[self.create_camera_frame(lit_subsystem_data)]]
 
-def run_gui_process(lit_subsystem_data: LITSubsystemData, object_detect_status: bool, model_path: str='', label_path: str='', camera_idx: int = 0, use_tpu: bool = False):
-    if object_detect_status:
-        from tensorflow.lite.python.interpreter import Interpreter 
-        from tensorflow.lite.python.interpreter import load_delegate
-        object_detection_model = ObjectDetectionModel(model_path=model_path, use_edge_tpu=use_tpu, camera_index=camera_idx, label_path=label_path)
-        lit_subsystem_data.set_object_detection_model(object_detection_model)
-        gui = LITGUI(lit_subsystem_data)
-        lit_subsystem_data.object_detection_model.set_image_window(f'-CAMERA_{lit_subsystem_data.camera_idx}_FEED-')
-        lit_subsystem_data.object_detection_model.set_window(gui.window)
-    else:
-        gui = LITGUI(lit_subsystem_data)
-    gui.start_event_loop()
-    return
 
-def start_gui(lit_subsystem_data: LITSubsystemData, object_detect_status: bool, model_path: str='', label_path: str='', camera_idx: int = 0, use_tpu: bool = False):
-    p = multiprocessing.Process(target=run_gui_process, args=(lit_subsystem_data,object_detect_status, model_path, label_path, camera_idx, use_tpu))
-    p.start()
-    return p
-
-def set_command_line_arguments():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--performance_mode", help="Run subsystems in parallel", action="store_true")
-    args = parser.parse_args()
-    if args.performance_mode:
-        return True
-    return False
 
 def split(list_a, chunk_size):
   for i in range(0, len(list_a), chunk_size):
     yield list_a[i:i + chunk_size]
 
 
-if __name__ == '__main__':
-    # obj_detector_one = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, 0, 
-    #                                     r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
-    # obj_detector_two = ObjectDetectionModel(r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\detect.tflite', False, -1, 
-    #                                     r'C:\Users\brand\OneDrive\Documents\SeniorDesign\ModelFiles\labelmap.txt')
-    performance_status = set_command_line_arguments()
-    model_path = r'C:\Users\brand\Documents\seniordesign\LITProject-NewApproach\ModelFiles\detect.tflite'
-    label_path = r'C:\Users\brand\Documents\seniordesign\LITProject-NewApproach\ModelFiles\labelmap.txt'
-    wifi_host='192.168.0.220'
-    ethernet_host = '192.168.1.2'
-    ports = [5000, 5001]
-    object_detection_model = ObjectDetectionModel(model_path=model_path, use_edge_tpu=False, camera_index=0, label_path=label_path)
-    subsystem_one = LITSubsystemData(0,object_detection_model, number_of_leds=256, number_of_sections=16, host=ethernet_host, port=ports[0])
-    # subsystem_two = LITSubsystemData(1,number_of_leds=256, number_of_sections=8)
-    # subsystem_list = [subsystem_one, subsystem_two]
-    if performance_status:
-        process1 = start_gui(subsystem_one, True, model_path, label_path, 0, False)
-        # process2 = start_gui(subsystem_two, False, model_path, label_path, 1, False)
-        process1.join()
-        # process2.join()
-    else:
-        lit_gui = LITGUI(subsystem_one)
-        lit_gui.start_event_loop()
+

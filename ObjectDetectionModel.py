@@ -18,7 +18,12 @@ except:
 
 import typing
 from multiprocessing import Process, Queue
+import math
 
+def focal_length_finder(camera_video_width: int, horizontal_fov: int)->float:
+    """Using the width of the video from the camera in pixels and the horizontal field of view of the camera, both in pixels, this functuion returns the focal length in pixels of the camera."""
+    fov_rad = math.radians(horizontal_fov)
+    return camera_video_width / (2 * math.tan(fov_rad / 2))
 
 def create_fov_range_list(hfov: int, num_of_sections: int)->typing.Union[list[float], list[int]]:
     """Returns a list of float or integer values equally spaced apart by setting the hfov arguement into 2 seperate values, which are the the positive and negative states of the number divided by two.
@@ -195,7 +200,7 @@ class ObjectDetectionModel:
 
     def __init__(self, model_path: str, use_edge_tpu: bool, camera_index: int, label_path: str, 
                  min_conf_threshold: float= 0.5,window: typing.Union[sg.Window, None]=None, image_window_name: typing.Union[str, None]=None, 
-                 client_conn: socket.socket = None, thread_lock: threading.Lock = None, ref_person_width: int = 20, hfov: int = 100, vfov:int = 78, resolution: tuple[int, int] =(640,480), focal_length: float = 302.0758) -> None:
+                 client_conn: socket.socket = None, thread_lock: threading.Lock = None, ref_person_width: int = 20, hfov: int = 100, vfov:int = 129.46, resolution: tuple[int, int] =(640,360), focal_length: float = 0) -> None:
         """Creates an Object for performing object detection on a camera feed. Uses either an EdgeTPU or CPU to perform computations.
         
         Parameters:
@@ -226,7 +231,10 @@ class ObjectDetectionModel:
         self.hfov = hfov
         self.vfov = vfov
         self.resolution = resolution
-        self.focal_length = focal_length
+        if focal_length == 0:
+            self.focal_length = focal_length_finder(resolution[0], hfov)
+        else:
+            self.focal_length = focal_length
 
     def set_led_ranges_for_objects(self, number_of_leds: int, number_of_sections: int):
         self.led_sections = create_led_tuple_range_list(number_of_leds, number_of_sections)
@@ -309,46 +317,47 @@ class ObjectDetectionModel:
 
         if self.video_stream.stopped:
             return
+        
         curr_auto_led_data_list = []
+        
         for i in range(len(scores)):
-            try: #get rid of non humna
-                if ((scores[i] > self.min_conf_threshold) and (scores[i] <= 1.0)):      
-
-                    self.get_and_set_current_box_vertices(boxes[i])
-                    self.draw_rectangle_around_current_box()
-                    self.set_label_on_obj_in_frame(classes[i], scores[i])
-                    self.set_mid_point_current_obj()
-                    self.set_width_of_current_obj()
+            if self.obj_is_person(self.labels[int(classes[i])]) and ((scores[i] > self.min_conf_threshold) and (scores[i] <= 1.0)):      
+                self.get_and_set_current_box_vertices(boxes[i])
+                self.draw_rectangle_around_current_box()
+                self.set_label_on_obj_in_frame(classes[i], scores[i])
+                self.set_mid_point_current_obj()
+                self.set_width_of_current_obj()
+            else:
+                continue
+            try:
+                if self.led_sections:
+                    distance = estimate_distance(self.current_obj_width, self.video_stream.focal_length, self.ref_person_width)
+                    angle_x = calculate_horz_angle(self.current_obj_mid_point_x, self.video_stream.video_width, self.video_stream.hfov)
+                    angle_y = calculate_vert_angle(self.current_obj_mid_point_y, self.video_stream.video_heigth, self.video_stream.hfov)
+                    brightness = brightness_based_on_distance(distance)
+                    led_tuple = determine_leds_range_for_angle(angle_x=angle_x, led_sections=self.led_sections, hfov_range_list=self.fov_sections)
+                    curr_led_data = AutoLEDData(led_tuple, brightness)
+                    curr_auto_led_data_list.append(curr_led_data)
             except:
                 pass
-                try:
-                    if self.led_sections:
-                        distance = estimate_distance(self.current_obj_width, self.video_stream.focal_length, self.ref_person_width)
-                        angle_x = calculate_horz_angle(self.current_obj_mid_point_x, self.video_stream.video_width, self.video_stream.hfov)
-                        angle_y = calculate_vert_angle(self.current_obj_mid_point_y, self.video_stream.video_heigth, self.video_stream.hfov)
-                        brightness = brightness_based_on_distance(distance)
-                        led_tuple = determine_leds_range_for_angle(angle_x=angle_x, led_sections=self.led_sections, hfov_range_list=self.fov_sections)
-                        curr_led_data = AutoLEDData(led_tuple, brightness)
-                        curr_auto_led_data_list.append(curr_led_data)
-                except:
-                    pass
+        
         try:
             if self.client_conn:
                 self.system_led_data.auto_led_data_list = curr_auto_led_data_list  
                 self.send_data_callback(False)
         except:
             pass
-        # cv2.putText(self.frame,'FPS: {0:.2f}'.format(self.frame_rate_calc),(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,0),2,cv2.LINE_AA) #can prolly just delete will test.
+        
         if self.gui_window:
             try:
                 cv2.putText(self.frame,'FPS: {0:.2f}'.format(self.frame_rate_calc),(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,0),2,cv2.LINE_AA)
                 image_bytes = cv2.imencode('.png', self.frame)[1].tobytes()
                 self.gui_window.write_event_value(f"UPDATE_{self.camera_index}_FRAMES", image_bytes)
-                # self.gui_window[self.image_window_name].update(data=image_bytes)
             except:
                 print('Brandon')
         else:
             print('No Gui Window')
+            
         t2 = cv2.getTickCount()
         time1 = (t2-self.t1)/self.freq
         self.frame_rate_calc= 1/time1

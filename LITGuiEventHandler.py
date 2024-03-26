@@ -73,7 +73,7 @@ class LITGuiEventHandler:
             self.object_detection_model_dict[f'CAMERA_{self.event_camera}'].set_window(self.window)
         else:
             self.object_detection_model_dict[f'CAMERA_{self.event_camera}'].set_window(None)
-            time.sleep(2)
+            # time.sleep(2)
             self.window[f'-CAMERA_{self.event_camera}_FEED-'].update(filename=r'Lebron.png', size=(720, 480))
         return
     
@@ -91,7 +91,7 @@ class LITGuiEventHandler:
         if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn and not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].auto_status:
             self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True) #this breaks the other loop somehow
         else:
-            time.sleep(.25)
+            # time.sleep(.25)
             self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
         return
     
@@ -101,7 +101,7 @@ class LITGuiEventHandler:
             if not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].auto_status:
                 self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
             else:
-                time.sleep(.25)
+                # time.sleep(.25)
                 self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
 
 
@@ -117,7 +117,7 @@ class LITGuiEventHandler:
             if not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].auto_status:
                 self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
             else:
-                time.sleep(.25)
+                # time.sleep(.25)
                 self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
         return 
 
@@ -139,7 +139,7 @@ class LITGuiEventHandler:
             if not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].auto_status:
                 self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
             else:
-                time.sleep(.25)
+                # time.sleep(.25)
                 self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
         return
     
@@ -154,7 +154,7 @@ class LITGuiEventHandler:
             if not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].auto_status:
                 self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
             else:
-                time.sleep(.25)
+                # time.sleep(.25)
                 self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
 
             
@@ -285,12 +285,12 @@ class LITGuiEventHandler:
             elif '_LEDSLIDER-' in self.event and 'Release' not in self.event:
                 self.on_manually_control_led_range_slider_event()
             elif '_LEDSLIDER-' in self.event and 'Release' in self.event:
-                time.sleep(0.5)
+                # time.sleep(0.5)
                 self.on_manually_control_led_range_slider_event()
             elif '_BRIGHTNESSSLIDER' in self.event and 'Release' not in self.event:
                 self.on_manually_control_led_brightness_slider_event()
             elif '_BRIGHTNESSSLIDER' in self.event and 'Release' in self.event:
-                time.sleep(0.5)
+                # time.sleep(0.5)
                 self.on_manually_control_led_brightness_slider_event()
             elif 'UPDATE_' in self.event and '_FRAME' in self.event:
                 print(self.event_camera)
