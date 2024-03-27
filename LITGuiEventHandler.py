@@ -1,13 +1,7 @@
 import PySimpleGUI as sg
-import cv2
-import numpy as np
 import typing
 import ObjectDetectionModel
 from ObjectDetectionModel import ObjectDetectionModel
-import threading
-import time
-import socket
-import pickle
 from LITSubsystemInterface import LITSubsystemData
 from utils import AutoLEDData, ManualLEDData
 
@@ -37,7 +31,7 @@ class LITGuiEventHandler:
         self.object_detection_model_dict: dict[str, ObjectDetectionModel] = {}
         self.lit_subsystem_dict: dict[str, LITSubsystemData] = {}
         self.manual_led_data: ManualLEDData = ManualLEDData()
-
+        self.window: sg.Window
     def set_camera_of_event(self):
         """Used to find the camera index for the panel in which the event spawned from. This value is used to apply the setting changed to the correct Subsystem.
         Value is set to the event_camera Attribute."""
@@ -73,7 +67,6 @@ class LITGuiEventHandler:
             self.object_detection_model_dict[f'CAMERA_{self.event_camera}'].set_window(self.window)
         else:
             self.object_detection_model_dict[f'CAMERA_{self.event_camera}'].set_window(None)
-            time.sleep(2)
             self.window[f'-CAMERA_{self.event_camera}_FEED-'].update(filename=r'Lebron.png', size=(720, 480))
         return
     
@@ -88,13 +81,20 @@ class LITGuiEventHandler:
             self.disable_all_manual_options_of_subsystem()
 
         self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].manual_status = manual_status
-        self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True) #this breaks the other loop somehow
+        if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn and not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].auto_status:
+            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True) #this breaks the other loop somehow
+        else:
+            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
         return
     
     def on_turn_on_all_leds(self):
         if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn:
             self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].force_all_leds_on = self.get_value_of_element_from_event()
-            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
+            if not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].auto_status:
+                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
+            else:
+                 self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
+
 
     def on_manually_control_led_range_event(self):  
         """Handles an event in which the user has altered the state of one of the LED range checkboxes displayed on the GUI inside one of the Subsystem Frames. If there is a connection to a server, this event will
@@ -105,12 +105,17 @@ class LITGuiEventHandler:
                 self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].system_led_data.manual_led_data.add_led_range(led_range)
             else:
                 self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].system_led_data.manual_led_data.remove_led_range(led_range)
-            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
+            if not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].auto_status:
+                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
+            else:
+                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
         return 
 
     def on_manually_control_led_range_slider_event(self):
         """Handles an event in which the user has altered the value of a led range slider in one of the LED range sliders displayed on the GUI inside of the Subsystem Frames. If there is a connection to a server,
         this event will update the state of the LED slider range specified by the user in the physical LED Subsystem."""
+        if not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].manual_status:
+            return
         if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn:
             if self.values[f'-CAMERA_{self.event_camera}_SLIDER_LEFT_TO_RIGHT-']:
                 on_led_range = (0, round(self.values[f'-CAMERA_{self.event_camera}_LEDSLIDER-']))
@@ -121,18 +126,42 @@ class LITGuiEventHandler:
             if on_led_range == (0, 0) or on_led_range == (self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].number_of_leds, self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].number_of_leds):
                 on_led_range = False
             self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].system_led_data.manual_led_data.set_slider_led_range(on_led_range)
-            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
+            if not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].auto_status:
+                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
+            else:
+                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
         return
     
     def on_manually_control_led_brightness_slider_event(self):
         """Handles an event in which the user has altered the value of a led brightness slider in one of the LED brightness sliders displayed on the GUI inside of the Subsystem Frames. 
         If there is a connection to a server, this event will update the state of the LED slider brightness specified by the user in the physical LED Subsystem."""
+        if not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].manual_status:
+            return
         if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn:
             brightness = round(self.values[f'-CAMERA_{self.event_camera}_BRIGHTNESSSLIDER-'] * .01, 2)
             self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].system_led_data.manual_led_data.brightness = brightness
-            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
+            if not self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].auto_status:
+                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
+            else:
+                self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_data_for_led_addressing(True)
 
-            
+    def handle_server_disconnect(self):
+        self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn.close()
+        self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn = False
+        self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].send_lock = False
+        if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].object_detection_model:
+            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].object_detection_model.client_conn = False
+            self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].object_detection_model.thread_lock = False
+        self.window[f'-CAMERA_{self.event_camera}_CONNECTIONSTATUS-'].update(f"Server Connection Status: Disconnected")
+        self.window[f'-CAMERA_{self.camera_idx}_RECONNECT'].update(disabled=False)
+        return
+        
+    def handle_server_reconnect_attempt(self):
+        self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].attempt_to_create_client_conn()
+        if self.lit_subsystem_dict[f'CAMERA_{self.event_camera}'].client_conn:
+            self.window[f'-CAMERA_{self.event_camera}_CONNECTIONSTATUS-'].update(f"Server Connection Status: Connected")
+            self.window[f'-CAMERA_{self.camera_idx}_RECONNECT'].update(disabled=True)
+    
     def disable_all_manual_options_of_subsystem(self):
         """Disable all manual options of the subsystem panel where this event originated."""
         self.disable_all_led_range_checkboxs()
@@ -238,7 +267,7 @@ class LITGuiEventHandler:
         """Creates a loop that runs endlessly while the GUI is running, handles all events the occur in the GUI."""
         while True:             
             self.event, self.values = self.window.Read()
-            if self.event is None:
+            if self.event is None: #MAYBE, JUST MAYBE WE LISTEN HERE FOR SERVER STATUS/SEEMS UNNECCESARY I think``
                 break
             self.set_camera_of_event()
             if 'SHOWFEED' in self.event:
@@ -260,12 +289,17 @@ class LITGuiEventHandler:
             elif '_LEDSLIDER-' in self.event and 'Release' not in self.event:
                 self.on_manually_control_led_range_slider_event()
             elif '_LEDSLIDER-' in self.event and 'Release' in self.event:
-                time.sleep(0.5)
                 self.on_manually_control_led_range_slider_event()
             elif '_BRIGHTNESSSLIDER' in self.event and 'Release' not in self.event:
                 self.on_manually_control_led_brightness_slider_event()
             elif '_BRIGHTNESSSLIDER' in self.event and 'Release' in self.event:
-                time.sleep(0.5)
                 self.on_manually_control_led_brightness_slider_event()
+            elif 'UPDATE_' in self.event and '_FRAME' in self.event:
+                img_bytes = self.get_value_of_element_from_event()
+                self.window[f'-CAMERA_{self.event_camera}_FEED-'].update(data=img_bytes)
+            elif f'-SERVER_{self.event_camera}_DISCONNECTED-' in self.event:
+                self.handle_server_disconnect()
+            elif f'-CAMERA_{self.event_camera}_RECONNECT' in self.event:
+                self.handle_server_reconnect_attempt()
         return
     

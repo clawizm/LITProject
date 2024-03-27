@@ -1,34 +1,59 @@
 import typing
 import itertools
-
+import math
 class ManualLEDData:
-
+    """Stores all user entered manual LED Data, where all led ranges stored in this class share single brightness"""
     def __init__(self, brightness: float = 0.00):
+        """Creates a container storing relevant user defined LED data."""
+
         self.brightness = brightness
         self.manual_led_tuple_list: list[tuple[int, int]] = []
         self.slider_led_tuple: tuple[int, int] = None
         return
     
     def add_led_range(self, led_range: tuple[int, int]):
+        """Add an LED range to the list of tuples stored in this container.
+        
+        Parameters:
+        - led_range (tuple[int, int]): The led_range the user would like to add to this container, in the form of a tuple."""
+
         self.manual_led_tuple_list.append(led_range)
         return
         
     def remove_led_range(self, led_range: tuple[int, int]):
+        """Remove an LED range to the list of tuples stored in this container.
+        
+        Parameters:
+        - led_range (tuple[int, int]): The led_range the user would like to remove from this container, in the form of a tuple."""
+
         self.manual_led_tuple_list.remove(led_range)
         return
     
     def set_slider_led_range(self, led_range: tuple[int, int]):
+        """Set the value of the LED range provided in the LED slider.
+        
+        Parameters:
+        - led_range (tuple[int, int]): The led_range the user would like to store as the slider range in this container, in the form of a tuple."""
+
         self.slider_led_tuple = led_range
         return
     
     def generate_full_manual_led_list(self)->list[tuple[int, int]]:
+        """Returns a list of all LED ranges stored in this container as a list of tuples."""
+
         if self.slider_led_tuple:
             return list(itertools.chain.from_iterable([self.manual_led_tuple_list, [self.slider_led_tuple]]))
         return self.manual_led_tuple_list
 
 
 class AutoLEDData:
+    """Stores a LED range and brightness for a respective object when running a Object Detection Model."""
     def __init__(self, led_range: tuple[int, int], brightness: float):
+        """A LED range and brightness which directly correlates to an object detected in the ObjectDetectionModel class.
+        
+        Parameters:
+        - led_range (tuple[int, int]): A range of leds to illuminate.
+        - brightness (float): The brightness level to illuminate this led range at."""
         self.led_range = led_range
         self.brightness = brightness    
 
@@ -61,13 +86,17 @@ class SystemLEDData:
             missing_leds = find_missing_numbers_as_ranges_tuples(self.full_manual_list, num_of_leds)
             self.turn_off_leds.manual_led_tuple_list = missing_leds
         elif auto_status:
-            full_auto_list = [auto_led.led_range for auto_led in self.auto_led_data_list]
-            if not full_auto_list:
-                missing_leds = (0, num_of_leds)
+            if self.auto_led_data_list:
+                full_auto_list = [auto_led.led_range for auto_led in self.auto_led_data_list]
+                if not full_auto_list:
+                    missing_leds = (0, num_of_leds)
+                else:
+                    missing_leds = find_missing_numbers_as_ranges_tuples(full_auto_list, num_of_leds)
+                self.turn_off_leds.manual_led_tuple_list = missing_leds
             else:
-                missing_leds = find_missing_numbers_as_ranges_tuples(full_auto_list, num_of_leds)
-            self.turn_off_leds.manual_led_tuple_list = missing_leds
-
+                missing_leds = (0, num_of_leds)
+                full_auto_list = []
+                self.turn_off_leds.manual_led_tuple_list = missing_leds
         return
     
 
@@ -110,7 +139,7 @@ def find_missing_numbers_as_ranges_tuples(ranges, all_numbers: int) -> typing.Un
                 range_end = number
         
         # Add the last range
-        missing_ranges.append((range_start, range_end+1))
+        missing_ranges.append((range_start, range_end))
     
     return missing_ranges
     
@@ -158,7 +187,10 @@ def adjust_overlap(range1, range2):
     # No overlap
     return range1
 
-
+def focal_length_finder(camera_video_width: int, horizontal_fov: int)->float:
+    """Using the width of the video from the camera in pixels and the horizontal field of view of the camera, both in pixels, this functuion returns the focal length in pixels of the camera."""
+    fov_rad = math.radians(horizontal_fov)
+    return camera_video_width / (2 * math.tan(fov_rad / 2))
 
 if __name__ == '__main__':
     manual_led_data = ManualLEDData()
