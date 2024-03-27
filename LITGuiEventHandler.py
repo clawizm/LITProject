@@ -293,7 +293,6 @@ class LITGuiEventHandler:
                 # time.sleep(0.5)
                 self.on_manually_control_led_brightness_slider_event()
             elif 'UPDATE_' in self.event and '_FRAME' in self.event:
-                print(self.event_camera)
                 img_bytes = self.get_value_of_element_from_event()
                 self.window[f'-CAMERA_{self.event_camera}_FEED-'].update(data=img_bytes)
         return

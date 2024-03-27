@@ -1,5 +1,5 @@
 import math
-import asyncio
+# import asyncio
 # import winrt.windows.devices.enumeration as windows_devices
 
 
@@ -22,21 +22,16 @@ import asyncio
 
 
 
-# import cv2
+sensor_width_mm = 6.17  # Sensor width in mm
+focal_length_mm = 3.14  # Focal length in mm
 
-# index = 0
-# arr = []
-# while True:
-#     cap = cv2.VideoCapture(index)
-#     try:
-#         if cap.getBackendName()=="MSMF":
-#             arr.append(index)
-#     except:
-#         break
-#     cap.release()
-#     index += 1
+# Calculate FOV in radians
+FOV_radians = 2 * math.atan(sensor_width_mm / (2 * focal_length_mm))
 
-# print(arr)
+# Convert FOV to degrees
+FOV_degrees = math.degrees(FOV_radians)
+
+FOV_degrees
 
 def brightness_based_on_distance(distance, minDist=0.01, maxDist=5.0, linear_slope=0.25, exponential_base=2):
     """Distance is in meters, so please provide meters"""
@@ -63,9 +58,4 @@ def brightness_based_on_distance(distance, minDist=0.01, maxDist=5.0, linear_slo
         return (exponential_brightness / 100)
     
 
-print()
-import pandas as pd
 
-def order_scores(scores: pd.DataFrame) -> pd.DataFrame:
-    scores.sort_values(by='score', ascending=False, inplace=True, )
-    scores.set_index('score', inplace=True)

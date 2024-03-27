@@ -72,14 +72,14 @@ def brightness_based_on_distance(distance, minDist=0.01, maxDist=5.0, linear_slo
         # Brightness increases linearly based on the distance and slope.
         linear_brightness = (distance - minDist) / (threshold - minDist) * linear_slope * 100
         # Ensuring that the linear phase does not exceed the intended maximum at the threshold.
-        return (min(linear_brightness, linear_slope * 100) / 100)
+        return round((min(linear_brightness, linear_slope * 100) / 100), 2)
     else:
         # Exponential increase from the end of the linear phase to 100% from threshold to maxDist.
         # Normalize distance to range [0,1] for exponential calculation.
         normalized_dist = (distance - threshold) / (maxDist - threshold)
         # Calculate exponential increase with a base that can be adjusted.
         exponential_brightness = 100 * linear_slope + (100 * (1 - linear_slope) * (normalized_dist ** exponential_base))
-        return (exponential_brightness / 100)
+        return round((exponential_brightness / 100),2)
 
 def determine_leds_range_for_angle(angle_x: typing.Union[float, int], led_sections: list[tuple[int, int]], hfov_range_list: typing.Union[list[float], list[int]])->typing.Union[tuple, None]:
     """Returns the LEDs to turn on based on the angle of the object provided. This function finds the range this angle lies in based on the list of HFOV ranges, and returns the respective led section from the led_sections list.
@@ -101,8 +101,11 @@ def estimate_distance(found_width: float, focal_length: float, known_width: floa
     Parameters:
     - found_width (float): The width of the object detected in milimeters.
     - focal_length (float): The focal length in milimeters of the camera.
-    - known_width (float): The known width of the object detected in milimeters."""
-    distance = ((known_width * focal_length) / found_width) * 2.54
+    - known_width (float): The known width of the object detected in milimeters.
+    
+    Returns:
+    distance (float): The distance of the object measured in meters."""
+    distance = (((known_width * focal_length) / found_width) * 2.54 ) / 100
     return distance
 
 def calculate_horz_angle(obj_center_x: float, frame_width: int , hfov: int)->float:
@@ -200,7 +203,7 @@ class ObjectDetectionModel:
 
     def __init__(self, model_path: str, use_edge_tpu: bool, camera_index: int, label_path: str, 
                  min_conf_threshold: float= 0.5,window: typing.Union[sg.Window, None]=None, image_window_name: typing.Union[str, None]=None, 
-                 client_conn: socket.socket = None, thread_lock: threading.Lock = None, ref_person_width: int = 20, hfov: int = 100, vfov:int = 129.46, resolution: tuple[int, int] =(640,360), focal_length: float = 0) -> None:
+                 client_conn: socket.socket = None, thread_lock: threading.Lock = None, ref_person_width: int = 20, hfov: int = 89, vfov:int = 129.46, resolution: tuple[int, int] =(640,360), focal_length: float = 0) -> None:
         """Creates an Object for performing object detection on a camera feed. Uses either an EdgeTPU or CPU to perform computations.
         
         Parameters:
@@ -321,7 +324,7 @@ class ObjectDetectionModel:
         curr_auto_led_data_list = []
         
         for i in range(len(scores)):
-            if self.obj_is_person(self.labels[int(classes[i])]) and ((scores[i] > self.min_conf_threshold) and (scores[i] <= 1.0)):      
+            if (self.labels[int(classes[i])] == 'person') and ((scores[i] > self.min_conf_threshold) and (scores[i] <= 1.0)):      
                 self.get_and_set_current_box_vertices(boxes[i])
                 self.draw_rectangle_around_current_box()
                 self.set_label_on_obj_in_frame(classes[i], scores[i])
@@ -329,17 +332,19 @@ class ObjectDetectionModel:
                 self.set_width_of_current_obj()
             else:
                 continue
+                
             try:
                 if self.led_sections:
                     distance = estimate_distance(self.current_obj_width, self.video_stream.focal_length, self.ref_person_width)
                     angle_x = calculate_horz_angle(self.current_obj_mid_point_x, self.video_stream.video_width, self.video_stream.hfov)
+                    print(angle_x)
                     angle_y = calculate_vert_angle(self.current_obj_mid_point_y, self.video_stream.video_heigth, self.video_stream.hfov)
                     brightness = brightness_based_on_distance(distance)
                     led_tuple = determine_leds_range_for_angle(angle_x=angle_x, led_sections=self.led_sections, hfov_range_list=self.fov_sections)
                     curr_led_data = AutoLEDData(led_tuple, brightness)
                     curr_auto_led_data_list.append(curr_led_data)
             except:
-                pass
+                continue
         
         try:
             if self.client_conn:

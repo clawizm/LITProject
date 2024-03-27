@@ -128,10 +128,10 @@ class LITGUI(LITGuiEventHandler):
     def create_image_preview_section(self):
         """Creates the image element for the current Subsystem Frame being created. This is video feed will be displayed."""
         if self.camera_idx == 0:
-            camera_preview = [sg.Image(filename=r'C:\Users\00239148\PythonProjects\LITProject\Jason.png',
+            camera_preview = [sg.Image(filename=r'C:\Users\brand\Documents\seniordesign\OldLITTest\Jason.png',
                                         key=f'-CAMERA_{self.camera_idx}_FEED-', size=(self.gui_image_preview_width, self.gui_image_preview_height))] 
         else:
-            camera_preview = [sg.Image(filename=r'C:\Users\00239148\PythonProjects\LITProject\Lebron.png', 
+            camera_preview = [sg.Image(filename=r'C:\Users\brand\Documents\seniordesign\OldLITTest\Lebron.png', 
                                        key=f'-CAMERA_{self.camera_idx}_FEED-', size=(self.gui_image_preview_width, self.gui_image_preview_height))]
 
         return camera_preview

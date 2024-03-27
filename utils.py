@@ -86,13 +86,17 @@ class SystemLEDData:
             missing_leds = find_missing_numbers_as_ranges_tuples(self.full_manual_list, num_of_leds)
             self.turn_off_leds.manual_led_tuple_list = missing_leds
         elif auto_status:
-            full_auto_list = [auto_led.led_range for auto_led in self.auto_led_data_list]
-            if not full_auto_list:
-                missing_leds = (0, num_of_leds)
+            if self.auto_led_data_list:
+                full_auto_list = [auto_led.led_range for auto_led in self.auto_led_data_list]
+                if not full_auto_list:
+                    missing_leds = (0, num_of_leds)
+                else:
+                    missing_leds = find_missing_numbers_as_ranges_tuples(full_auto_list, num_of_leds)
+                self.turn_off_leds.manual_led_tuple_list = missing_leds
             else:
-                missing_leds = find_missing_numbers_as_ranges_tuples(full_auto_list, num_of_leds)
-            self.turn_off_leds.manual_led_tuple_list = missing_leds
-
+                missing_leds = (0, num_of_leds)
+                full_auto_list = []
+                self.turn_off_leds.manual_led_tuple_list = missing_leds
         return
     
 

@@ -41,6 +41,8 @@ class LITSubsystemData():
         else:
             self.image_preview_height = image_preview_height
             self.image_preview_width = image_preview_width
+        return
+    
     def set_object_detection_model(self, object_detection_model: ObjectDetectionModel):
         if isinstance(object_detection_model, ObjectDetectionModel):
             self.object_detection_model = object_detection_model
@@ -52,7 +54,11 @@ class LITSubsystemData():
             if self.client_conn:
                 self.object_detection_model.client_conn = self.client_conn    
                 self.object_detection_model.thread_lock = self.send_lock  
+            else:
+                self.object_detection_model.client_conn = False   
+                self.object_detection_model.thread_lock = False  
         return
+    
     def attempt_to_create_client_conn(self):
         """Called in the constructor, used to create a connection to the server if provided a host and port. This connection is unique to each instance, as well as the lock creatred when connecting.
         This connection and thread lock is also passed to the object detection model if provide in the constructor. If the server and port are not present, the client_conn and send_lock
@@ -104,16 +110,13 @@ class LITSubsystemData():
         else:
             data = [0, [], 0, [(0,self.number_of_leds)]]
 
-        print(data)
         
         pickle_data = pickle.dumps(data)
         if self.send_lock:
             with self.send_lock:
                 self.client_conn.send(pickle_data)
-                print('Data send')
         elif self.client_conn:
             self.client_conn.send(pickle_data)      
-            print('Data sent') 
         return
     
 
